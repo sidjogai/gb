@@ -174,6 +174,7 @@ struct ppu {
         u8 scx;                 /* FF43 - SCX: background viewport X position */
         u8 ly;                  /* FF44 - LY: LCD Y coordinate [read-only] */
         u8 lyc;                 /* FF45 - LYC: LY compare */
+        u8 dma;                 /* FF46 — DMA: OAM DMA source address & start */
         u8 bgp;                 /* FF47 - BG palette data */
         u8 obp0;                /* FF48 - OBJ palette 0 */
         u8 obp1;                /* FF49 - OBJ palette 1 */
@@ -181,6 +182,10 @@ struct ppu {
         u8 wx;                  /* FF4B - Window X position plus 7 */
 
         u8 lx;                  /* internal horizontal counter; not exposed */
+
+        u8   cycles_since_dma_initiated; /* m cycles */
+        bool dma_in_progress;
+        bool oam_access_blocked;
 
         u32  palette[4];        /* light to dark; ARGB8888 format */
         u32 *display_buf;       /* user-facing display; ARGB8888 format */
@@ -205,8 +210,11 @@ struct ppu {
                 u8 bitplane0;
                 u8 bitplane1;
                 enum fetcher_state {
+                        FETCH_TILE_ID_IDLE,
                         FETCH_TILE_ID,
+                        FETCH_BITPLANE0_IDLE,
                         FETCH_BITPLANE0,
+                        FETCH_BITPLANE1_IDLE,
                         FETCH_BITPLANE1,
                         PUSH,
                 } state;
@@ -224,16 +232,9 @@ struct ppu {
                 /* bool active; /\* whether pixels are popped from fifo each dot *\/ */
         } bg_fifo, obj_fifo;
 
-        /* static_assert(sizeof(struct fetcher) == 3); */
-
         struct obj *cur_obj;
 
         struct mem *mem; /* required for OAM DMA */
-        struct dma {
-                bool    in_progress;
-                m_cycle delta;  /* cycles elapsed since OAM DMA initiated */
-                u8      val;    /* FF46 — DMA: OAM DMA source address & start */
-        } dma;
 
         t_cycle line_delta; /* dots elapsed since scan line started */
 

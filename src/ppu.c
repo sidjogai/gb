@@ -1,5 +1,7 @@
 
 
+#define dbg(...) do { printf("tick = %lld ", *TICK); printf("[%s] ", __func__), printf(__VA_ARGS__);} while(0)
+
 /* static bool ppu_loggin_enabled = true; */
 static bool ppu_loggin_enabled = false;
 
@@ -449,60 +451,37 @@ static void drawing(struct ppu *ppu, u8 *interrupt_flag)
         }
 
  start:;
-        struct fetcher *active_fetcher = ppu->active_fetcher == BG_FETCHER ?
-                &ppu->bg_fetcher : &ppu->obj_fetcher;
-        if (left < fetcher_state_duration(active_fetcher->state))
-                goto done;
+        if (ppu->active_fetcher != BG_FETCHER)
+                Q;
 
-        if (ppu->active_fetcher == BG_FETCHER)
-                switch (active_fetcher->state) {
-                case FETCH_TILE_ID:
-                        fetch_bg_tile_id(ppu);
-                        CLOCK(2);
-                        tick(2);
-                        break;
-                case FETCH_BITPLANE0:
-                        fetch_bg_bitplane0(ppu);
-                        CLOCK(2);
-                        tick(2);
-                        break;
-                case FETCH_BITPLANE1:
-                        fetch_bg_bitplane1(ppu);
-                        CLOCK(2);
-                        tick(2);
-                        break;
-                case PUSH:
-                        CLOCK(1);
-                        tick(1);
 
-                        push_to_bg_fifo(ppu); /* kind of the wrong order */
+        switch (ppu->bg_fetcher.state) {
+        case FETCH_TILE_ID:
+                fetch_bg_tile_id(ppu);
+                CLOCK(2);
+                tick(2);
+                break;
+        case FETCH_BITPLANE0:
+                fetch_bg_bitplane0(ppu);
+                CLOCK(2);
+                tick(2);
+                break;
+        case FETCH_BITPLANE1:
+                fetch_bg_bitplane1(ppu);
+                CLOCK(2);
+                tick(2);
+                break;
+        case PUSH:
+                CLOCK(1);
+                tick(1);
 
-                        break;
-                }
-        else {
-                /* Q;   */
-                switch (active_fetcher->state) {
-                case FETCH_TILE_ID:
-                        fetch_obj_tile_id(ppu);
-                        tick(2);
+                push_to_bg_fifo(ppu); /* kind of the wrong order */
 
-                        break;
-                case FETCH_BITPLANE0:
-                        fetch_obj_bitplane0(ppu);
-                        tick(2);
-
-                        break;
-                case FETCH_BITPLANE1:
-                        fetch_obj_bitplane1(ppu);
-                        tick(2);
-
-                        break;
-                case PUSH:
-                        tick(1);
-
-                        push_to_obj_fifo(ppu);
-                        break;
-                }
+                break;
+        case FETCH_BITPLANE0_IDLE:
+        case FETCH_BITPLANE1_IDLE:
+        case FETCH_TILE_ID_IDLE:
+                die("1\n");
         }
 
         goto start;
@@ -537,24 +516,49 @@ static void vblank(struct ppu *ppu, u8 *interrupt_flag)
 
 static void oam_dma(struct ppu *ppu)
 {
-        if (!ppu->dma.in_progress)
+        if (!ppu->dma_in_progress)
                 return;
 
-        if (ppu->dma.delta > 160) {
+        /* there is a cycle delay before dma is initiated */
+        if (ppu->cycles_since_dma_initiated == 0) {
+                ppu->cycles_since_dma_initiated++;
                 return;
         }
 
-        u16 src_addr = (u16)(ppu->dma.val << 8);
-        int offset   = ppu->dma.delta;
+        if (ppu->cycles_since_dma_initiated == 1) {
+                ppu->oam_access_blocked = true;
+                dbg("oam_access_blocked = true\n");
+        }
 
-        assert(offset >= 0 && offset < len(ppu->oam));
+        if (ppu->cycles_since_dma_initiated > 160) {
+                
+                ppu->oam_access_blocked = false;
+                ppu->dma_in_progress = false;
+                dbg("oam_access_blocked = false; dma_in_progress = false\n");
+                return;
+        }
+
+        int offset = ppu->cycles_since_dma_initiated - 1;
+
+        if (offset < 2 || offset >= 158)
+                dbg("transferring byte to [dma + %d], cycles_since_dma_initiated = %d)\n", offset, ppu->cycles_since_dma_initiated);
+        
+        u16 src_addr = (u16)(ppu->dma << 8);
+
+        assert(offset >= 0 && offset < 160);
+
+        /* assert(offset >= 0 && offset < len(ppu->oam)); */
 
         u8 v = read_mem(ppu->mem, (u16)(src_addr + offset));
 
         ppu->oam[offset] = v;
 
-        if (++ppu->dma.delta == 160)
-                ppu->dma.in_progress = false;
+        ppu->cycles_since_dma_initiated++;
+
+        /* if (++ppu->cycles_since_dma_initiated > 160) { */
+        /*         dbg("no more oam, since is %d\n", ppu->cycles_since_dma_initiated); */
+        /*         ppu->dma_in_progress = false; */
+        /* } */
 }
 
 static bool vram_accessible(enum ppu_mode m)
@@ -563,11 +567,6 @@ static bool vram_accessible(enum ppu_mode m)
         return m != DRAWING;
 }
 
-static bool oam_accessible(enum ppu_mode m)
-{
-        return true; /* TODO */
-        return m == HBLANK || m == VBLANK;
-}
 
 static void write_vram(struct ppu *ppu, u8 v, u16 addr)
 {
@@ -582,18 +581,33 @@ static u8 read_vram(struct ppu *ppu, u16 addr)
         return ppu->vram[addr - VRAM_START];
 }
 
+static bool oam_accessible(struct ppu *ppu)
+{
+        if (ppu->oam_access_blocked)
+                return false;
+        /* if (ppu->cycles_since_dma_initiated <= 161) */
+        /*         return false; */
+        /* return true; /\* TODO *\/ */
+        /* return m == HBLANK || m == VBLANK; */
+        return true;
+}
+
 static void write_oam(struct ppu *ppu, u8 v, u16 addr)
 {
-        log_ppu("wrote %d to $%x\n", v, addr);
-        if (oam_accessible(ppu->mode))
+        /* printf("OAM: wrote %d to $%x on %llx\n", v, addr, *TICK); */
+        if (oam_accessible(ppu))
                 ppu->oam[addr - OAM_START] = v;
 }
 
 static u8 read_oam(struct ppu *ppu, u16 addr)
 {
-        if (!oam_accessible(ppu->mode))
-                return 0xFF; /* garbage read */
-        return ppu->oam[addr - OAM_START];
+        u8 v = oam_accessible(ppu) ? ppu->oam[addr - OAM_START] : 0xFF;
+        if (oam_accessible(ppu)) {
+                dbg("read allowed, gave %d, cycles_since_dma_initiated = %d\n", v, ppu->cycles_since_dma_initiated);
+        } else {
+                dbg("read blocked, gave %d, cycles_since_dma_initiated = %d\n", v, ppu->cycles_since_dma_initiated);
+        }
+        return v;
 }
 
 static void write_ppu_reg(struct ppu *ppu, u8 v, u16 addr)
@@ -620,12 +634,16 @@ static void write_ppu_reg(struct ppu *ppu, u8 v, u16 addr)
                 ppu->lyc = v;
                 break;
         case DMA_ADDR:
-                if (v > 0xDF)
-                        die("TODO: check what to do here\n");
-
-                ppu->dma.in_progress = true;
-                ppu->dma.delta       = 0;
-                ppu->dma.val         = v;
+                assert(v <= 0xDF); /* TODO: check what happens here? */
+                /* if (oam_accessible(ppu)) { */
+                        ppu->dma = v;
+                        ppu->dma_in_progress = true;
+                        ppu->cycles_since_dma_initiated = 0;
+                        dbg("wrote %d to dma (ff46), dma_in_progress = true, cycles_since_dma_initiated = %d\n",
+                            v, ppu->cycles_since_dma_initiated);
+                /* } else { */
+                /*         dbg("skipped write  %d to dma (ff46)\n", v); */
+                /* } */
                 break;
         case BGP_ADDR:
                 ppu->bgp = v;
@@ -663,7 +681,8 @@ static u8 read_ppu_reg(struct ppu *ppu, u16 addr)
         case LYC_ADDR:
                 return ppu->lyc;
         case DMA_ADDR:
-                return ppu->dma.val;
+                printf("read dma addr %d\n", addr);
+                return ppu->dma;
         case BGP_ADDR:
                 return ppu->bgp;
         case OBP0_ADDR:

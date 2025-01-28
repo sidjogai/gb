@@ -29,6 +29,8 @@ typedef int      m_cycle;
 typedef int      t_cycle;
 typedef int      dot;
 
+static u64 *TICK;
+
 #define len(a) ((int)(sizeof(a) / sizeof(*a)))
 
 #define assert(expr) SDL_assert(expr)
@@ -82,6 +84,7 @@ int main(int argc, char *argv[])
         u64 frame;
 
         init_gb(&gb, gb_buf, palette, external_ram, rom_buf);
+        TICK = &gb.cpu.tick;
 
         skip_bootrom(&gb);
 
