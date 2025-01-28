@@ -183,8 +183,10 @@ struct ppu {
 
         u8 lx;                  /* internal horizontal counter; not exposed */
 
-        u8   cycles_since_dma_initiated; /* m cycles */
+        u8   cycles_since_dma_requested;
+        u8   dma_offset;
         bool dma_in_progress;
+        bool dma_requested;       /* set when DMA (FF46) written to */
         bool oam_access_blocked;
 
         u32  palette[4];        /* light to dark; ARGB8888 format */

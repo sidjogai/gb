@@ -1,6 +1,12 @@
 
 
-#define dbg(...) do { printf("tick = %lld ", *TICK); printf("[%s] ", __func__), printf(__VA_ARGS__);} while(0)
+#define dbg(...) do {                                           \
+                printf("tick = %lld ", *TICK / 4);                  \
+                printf("[%s, oam blocking %s] ", __func__, ppu->oam_access_blocked ? "ON" : "OFF"); \
+                printf(__VA_ARGS__);                            \
+        } while(0)
+
+#define dbg(...) ;
 
 /* static bool ppu_loggin_enabled = true; */
 static bool ppu_loggin_enabled = false;
@@ -408,11 +414,13 @@ static struct obj * sprite_hit(struct ppu *ppu)
         return NULL;
 }
 
+                /* if ((ppu->cur_obj = sprite_hit(ppu)) != NULL)           \ */
+                /*         ppu->new.obj_fetch_underway = true;             \ */
+
+
 #define CLOCK(n)                                                        \
         for (int i = 0; i < n; i++) {                                   \
                 clock_fifos(ppu);                                       \
-                if ((ppu->cur_obj = sprite_hit(ppu)) != NULL)           \
-                        ppu->new.obj_fetch_underway = true;             \
                 if (ppu->lx >= 160)                                     \
                         goto hblank;                                    \
         }
@@ -516,49 +524,54 @@ static void vblank(struct ppu *ppu, u8 *interrupt_flag)
 
 static void oam_dma(struct ppu *ppu)
 {
-        if (!ppu->dma_in_progress)
+        if (!(ppu->dma_in_progress || ppu->dma_requested))
                 return;
+        /* if (!ppu->dma_in_progress) { */
+        if (ppu->dma_requested) {
+                if (ppu->cycles_since_dma_requested <= 1) {
+                        ppu->cycles_since_dma_requested++;
+                        if (ppu->cycles_since_dma_requested == 2) {
+                                ppu->oam_access_blocked = true;
 
-        /* there is a cycle delay before dma is initiated */
-        if (ppu->cycles_since_dma_initiated == 0) {
-                ppu->cycles_since_dma_initiated++;
-                return;
+                                dbg("blocking access\n");
+                                
+                        }
+                                 
+                        if (ppu->dma_in_progress) {
+                                dbg("gap (but still in old dma)\n");
+                                goto transfer;
+                                
+                        }
+                        dbg("gap\n");
+                        return;
+                } else {
+                        dbg("starting new dma\n");
+                                                        ppu->dma_offset = 0;
+
+                        ppu->dma_requested = false;
+                        ppu->dma_in_progress = true;
+                }
         }
 
-        if (ppu->cycles_since_dma_initiated == 1) {
-                ppu->oam_access_blocked = true;
-                dbg("oam_access_blocked = true\n");
-        }
-
-        if (ppu->cycles_since_dma_initiated > 160) {
-                
-                ppu->oam_access_blocked = false;
-                ppu->dma_in_progress = false;
-                dbg("oam_access_blocked = false; dma_in_progress = false\n");
-                return;
-        }
-
-        int offset = ppu->cycles_since_dma_initiated - 1;
-
-        if (offset < 2 || offset >= 158)
-                dbg("transferring byte to [dma + %d], cycles_since_dma_initiated = %d)\n", offset, ppu->cycles_since_dma_initiated);
-        
+ transfer:;
         u16 src_addr = (u16)(ppu->dma << 8);
 
-        assert(offset >= 0 && offset < 160);
+        assert(ppu->dma_offset >= 0 && ppu->dma_offset < 160);
 
-        /* assert(offset >= 0 && offset < len(ppu->oam)); */
+        u8 v = read_mem(ppu->mem, (u16)(src_addr + ppu->dma_offset));
 
-        u8 v = read_mem(ppu->mem, (u16)(src_addr + offset));
+        dbg("[$%x + %d] = %d\n",
+            src_addr,
+            ppu->dma_offset,
+            v);
+        ppu->oam[ppu->dma_offset++] = v;
 
-        ppu->oam[offset] = v;
 
-        ppu->cycles_since_dma_initiated++;
-
-        /* if (++ppu->cycles_since_dma_initiated > 160) { */
-        /*         dbg("no more oam, since is %d\n", ppu->cycles_since_dma_initiated); */
-        /*         ppu->dma_in_progress = false; */
-        /* } */
+        if (ppu->dma_offset == 160) {
+                ppu->dma_in_progress = false;
+                ppu->oam_access_blocked = false;
+                dbg("read access allowed again\n");
+        }
 }
 
 static bool vram_accessible(enum ppu_mode m)
@@ -603,9 +616,9 @@ static u8 read_oam(struct ppu *ppu, u16 addr)
 {
         u8 v = oam_accessible(ppu) ? ppu->oam[addr - OAM_START] : 0xFF;
         if (oam_accessible(ppu)) {
-                dbg("read allowed, gave %d, cycles_since_dma_initiated = %d\n", v, ppu->cycles_since_dma_initiated);
+                dbg("read allowed, gave %d\n", v);
         } else {
-                dbg("read blocked, gave %d, cycles_since_dma_initiated = %d\n", v, ppu->cycles_since_dma_initiated);
+                dbg("read blocked, gave %d\n", v);
         }
         return v;
 }
@@ -636,11 +649,11 @@ static void write_ppu_reg(struct ppu *ppu, u8 v, u16 addr)
         case DMA_ADDR:
                 assert(v <= 0xDF); /* TODO: check what happens here? */
                 /* if (oam_accessible(ppu)) { */
-                        ppu->dma = v;
-                        ppu->dma_in_progress = true;
-                        ppu->cycles_since_dma_initiated = 0;
-                        dbg("wrote %d to dma (ff46), dma_in_progress = true, cycles_since_dma_initiated = %d\n",
-                            v, ppu->cycles_since_dma_initiated);
+                ppu->dma = v;
+                ppu->dma_requested= true;
+                ppu->cycles_since_dma_requested = 0;
+                dbg("wrote %d to dma (ff46)\n",
+                    v);
                 /* } else { */
                 /*         dbg("skipped write  %d to dma (ff46)\n", v); */
                 /* } */

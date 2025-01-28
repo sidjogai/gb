@@ -99,7 +99,7 @@ int main(int argc, char *argv[])
                         case SDL_KEYDOWN:
                                 switch (event.key.keysym.sym) {
                                 case SDLK_ESCAPE:
-                                        return 1; /* fail */
+                                        return 13; /* fail */
                                 case SDLK_SPACE:;
 
                                         u64 avg_ns = total_ns / frame;
@@ -108,7 +108,7 @@ int main(int argc, char *argv[])
                                         printf("frames = %llu, avg fps = %llu\n",
                                                frame, avg_fps);
 #endif
-                                       return 0; /* pass */
+                                       return 11; /* pass */
                                 }
                         }
                 }

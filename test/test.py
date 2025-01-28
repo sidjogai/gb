@@ -123,11 +123,13 @@ def compile(cmd):
 
 def run_tests(tests):
     for name in tests:
-        result = subprocess.run(["./gb-test", name])
-        if result.returncode == 0:
+        result = subprocess.run(["./gb-test", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if result.returncode == 11:
             msg = "\033[92mPASS\033[0m" if sys.stdout.isatty() else "PASS"
-        else:
+        elif result.returncode == 13:
             msg = "\033[91mFAIL\033[0m" if sys.stdout.isatty() else "FAIL"
+        else:
+            msg = "\033[7;91mCRASH\033[0m" if sys.stdout.isatty() else "CRASH"
         print(f"{name:<50}{' ':>16}{msg}")
 
 def main():

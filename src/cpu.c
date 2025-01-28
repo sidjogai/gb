@@ -1,8 +1,8 @@
 static void tick_cpu(struct cpu *cpu)
 {
-        cpu->tick += 4;
         sync_timer(cpu->mem->timer, &cpu->mem->int_flag);
         sync_ppu(cpu->mem->ppu, &cpu->mem->int_flag);
+        cpu->tick += 4;
 }
 
 static void cpu_write(struct cpu *cpu, u16 addr, u8 v)
