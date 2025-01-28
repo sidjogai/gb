@@ -1,5 +1,5 @@
 #define dbg(...) do {                                           \
-                printf("tick = %lld ", *TICK);                  \
+                printf("tick = %lld ", ppu->line_delta);                  \
                 printf("[%s, oam blocking %s] ", __func__, ppu->oam_access_blocked ? "ON" : "OFF"); \
                 printf(__VA_ARGS__);                            \
         } while(0)
@@ -17,16 +17,14 @@ static bool ppu_loggin_enabled = false;
                 if (!ppu_loggin_enabled)                \
                         break;                          \
                 printf("mode = %-8s; "                  \
-                       "tick = %-3lld; "                \
-                       "FCNT = %-3d; "                  \
+                       "tick = %-3d; "                \
                        "SCNT = %-3d; "                  \
                        "PCNT = %-3d; "                  \
                        "ly = %-3d; "                    \
                        "lx = %-3d; "                    \
                        "        %s:%-3d:%-22s        ", \
                        ppu_mode_name(ppu->mode),        \
-                       *TICK * 4,                       \
-                       ppu->fetch_count,                \
+                       ppu->line_delta,                 \
                        ppu->shift_count,                \
                        ppu->pixel_count,                \
                        ppu->ly,                         \
@@ -79,16 +77,35 @@ static bool oam_scan_invariant(struct ppu *ppu)
         return true;
 }
 
-static void trigger_stat_interrupt(struct ppu *ppu, int bit, u8 *interrupt_flag)
+static void update_coincidence_flag(struct ppu *ppu)
 {
-        printf("Fired it on tick %d!\n", ppu->line_delta);
-        *interrupt_flag |= (1 << 1);
+        if (ppu->ly == ppu->lyc)
+                ppu->stat |= (1 << 2);
+        else
+                ppu->stat &= ~(1 << 2);
+}
+
+static void check_stat_interrupt(struct ppu *ppu, u8 *interrupt_flag)
+{
+        bool interrupt_requested = 
+                !ppu->prev_stat_line_high && 
+                ((ppu->ly == ppu->lyc && ppu->stat & (1 << 6)) || 
+                 (ppu->mode == 2 && ppu->stat & (1 << 5)) ||
+                 (ppu->mode == 1 && ppu->stat & (1 << 4)) ||
+                 (ppu->mode == 0 && ppu->stat & (1 << 3)));
+
+        ppu->prev_stat_line_high = interrupt_requested;
+        /* printf("Requested stat interrupt\n"); */
+        if (interrupt_requested) {
+                printf("stat interrupt requested on %llu\n", *TICK);
+                *interrupt_flag |= (1 << 1);
+        }
 }
 
 static void switch_to_mode(struct ppu *ppu, enum ppu_mode m, u8 *interrupt_flag)
 {
         assert(valid_ppu_mode(m));
-
+        check_stat_interrupt(ppu, interrupt_flag);
         switch(m) {
         case OAM_SCAN:
                 ppu->mode       = OAM_SCAN;
@@ -100,8 +117,8 @@ static void switch_to_mode(struct ppu *ppu, enum ppu_mode m, u8 *interrupt_flag)
         case DRAWING:
 
                 ppu->pixel_counter_enabled = false;
-                ppu->fifos_been_pushed_to = false;
-                ppu->fetch_count = ppu->shift_count = ppu->pixel_count = 0;
+                ppu->shift_counter_enabled = false;
+                ppu->shift_count = ppu->pixel_count = 0;
 
 
                 ppu->mode = DRAWING;
@@ -110,6 +127,7 @@ static void switch_to_mode(struct ppu *ppu, enum ppu_mode m, u8 *interrupt_flag)
                 memset(&ppu->bg_fifo, 0, sizeof ppu->bg_fifo);
                 memset(&ppu->obj_fetcher, 0, sizeof ppu->obj_fetcher);
                 memset(&ppu->bg_fetcher, 0, sizeof ppu->bg_fetcher);
+                update_coincidence_flag(ppu);
                 break;
         case VBLANK:
                 ppu->mode       = VBLANK;
@@ -125,14 +143,10 @@ static void switch_to_mode(struct ppu *ppu, enum ppu_mode m, u8 *interrupt_flag)
 
         ppu->stat &= ~0x7;
         ppu->stat |= ppu->mode;
-        ppu->stat |= (ppu->ly == ppu->scy) << 2;
+        update_coincidence_flag(ppu); /* TODO: look into this */
 
         log_ppu("Switched to mode %s\n",
                 ppu_mode_name(ppu->mode));
-
-        for (int bit = 3; bit <= 5; bit++)
-                if (ppu->stat & (1 << bit))
-                        trigger_stat_interrupt(ppu, bit, interrupt_flag);
 }
 
 
@@ -180,9 +194,9 @@ static void hblank(struct ppu *ppu, u8 *interrupt_flag)
                 switch_to_mode(ppu, VBLANK, interrupt_flag);
         else {
                 switch_to_mode(ppu, OAM_SCAN, interrupt_flag);
-                if (++ppu->ly == ppu->lyc) {
-                        trigger_stat_interrupt(ppu, 6, interrupt_flag);
-                }
+                ppu->ly++;
+                update_coincidence_flag(ppu);
+                check_stat_interrupt(ppu, interrupt_flag);
         }
 }
 
@@ -190,6 +204,7 @@ static void oam_dma(struct ppu *ppu);
 
 static void sync_ppu(struct ppu *ppu, u8 *interrupt_flag)
 {
+        check_stat_interrupt(ppu, interrupt_flag);
         switch (ppu->mode) {
         case OAM_SCAN:
                 /* assert(oam_scan_invariant(ppu)); */
@@ -209,6 +224,9 @@ static void sync_ppu(struct ppu *ppu, u8 *interrupt_flag)
                 vblank(ppu, interrupt_flag);
                 break;
         }
+
+        /* for (int i = 0; i < 160 * 144; i++) */
+        /*         ppu->display_buf[i] = 0xffff00ff; */
 
         oam_dma(ppu);
 }
@@ -246,6 +264,7 @@ static void fetch_bg_tile_id(struct ppu *ppu)
                vram_offset_to_addr(offset) <= TILEMAP2_END);
 
         ppu->bg_fetcher.tile_id = ppu->vram[offset];
+        /* log_ppu("Fetch bg tile ID"); */
 }
 
 static u16 bitplane_formula(struct ppu *ppu, u8 tile_id)
@@ -270,7 +289,7 @@ static void fetch_bg_bitplane0(struct ppu *ppu)
 
         assert(vram_offset_to_addr(offset) >= TILE_DATA_START &&
                vram_offset_to_addr(offset) <= TILE_DATA_END);
-        log_ppu("offset = %x; bitplane = %d\n", offset, ppu->vram[offset]);
+        /* log_ppu("offset = %x; bitplane = %d\n", offset, ppu->vram[offset]); */
 
         ppu->bg_fetcher.bitplane0 = ppu->vram[offset];
 }
@@ -282,7 +301,7 @@ static void fetch_bg_bitplane1(struct ppu *ppu)
 
         assert(vram_offset_to_addr(offset) >= TILE_DATA_START &&
                vram_offset_to_addr(offset) <= TILE_DATA_END);
-        log_ppu("offset = %x; bitplane = %d\n", offset, ppu->vram[offset]);
+        /* log_ppu("offset = %x; bitplane = %d\n", offset, ppu->vram[offset]); */
 
         ppu->bg_fetcher.bitplane1 = ppu->vram[offset];
         ppu->bg_fetcher.state = PUSH;
@@ -319,13 +338,16 @@ static void tick_drawing(struct ppu *ppu, u8 *interrupt_flag);
 static void clock_fifos(struct ppu *ppu)
 {
         /* TODO: sprites */
-        if (!ppu->fifos_been_pushed_to || ppu->bg_fifo.len == 0) {
+        if (!ppu->shift_counter_enabled || ppu->bg_fifo.len == 0) {
                 return;
         }
 
         struct fifo_entry bg = pop_fifo(&ppu->bg_fifo);
 
+        /* if (ppu->shift_counter_enabled) */
         ppu->shift_count++;
+        if (ppu->pixel_counter_enabled)
+                ppu->pixel_count++;
 
         if (ppu->pixel_count < 8) {
                 log_ppu("did pop but less now");
@@ -342,68 +364,102 @@ static void drawing(struct ppu *ppu, u8 *interrupt_flag)
 {
         assert(ppu->active_fetcher == BG_FETCHER);
         for (int i = 0; i < 4; i++, ppu->line_delta++) {
-                if (ppu->shift_count == (ppu->scx & 7))
-                        ppu->pixel_counter_enabled = true;
+                check_stat_interrupt(ppu, interrupt_flag);
                 tick_drawing(ppu, interrupt_flag);
-                clock_fifos(ppu);
-                if (ppu->pixel_counter_enabled)
-                        ppu->pixel_count++;
+                
                 if (ppu->lx == 160)
                         goto hblank;
         }
 
         return;
  hblank:
+        /* printf("Done %d \n", ppu->line_delta - 80); */
         switch_to_mode(ppu, HBLANK, interrupt_flag);
+}
+
+static void try_clocking_fifos(struct ppu *ppu)
+{
+        if (!ppu->shift_counter_enabled)
+                return;
+        struct fifo_entry bg = pop_fifo(&ppu->bg_fifo);
+        if (ppu->pixel_count >= 8) {
+                u8 color = (ppu->bgp >> (bg.color * 2)) & 0x3;
+                u32 display_color = ppu->palette[color];
+                ppu->display_buf[ppu->ly * 160 + ppu->lx] = display_color;
+                log_ppu("puxhed pxiel");
+                ppu->lx++;
+        }
+        ppu->shift_count++;
+        if (ppu->pixel_counter_enabled) {
+                ppu->pixel_count++;
+        }
 }
 
 static void tick_drawing(struct ppu *ppu, u8 *interrupt_flag)
 {
+        if (ppu->shift_count == (ppu->scx & 0x7))
+                ppu->pixel_counter_enabled = true;
+
+        try_clocking_fifos(ppu);
+        
+        bool reset_shift_counter = false;
         switch (ppu->bg_fetcher.state) {
         case FETCH_TILE_ID_IDLE:
+                log_ppu("fetch_tile_id_idle");
                 ppu->bg_fetcher.state = FETCH_TILE_ID;
-                ppu->fetch_count++;
+                
                 break;
         case FETCH_TILE_ID:
+                log_ppu("fetch_tile_id");
                 fetch_bg_tile_id(ppu);
-                log_ppu("Fetch tile ID done");
                 ppu->bg_fetcher.state = FETCH_BITPLANE0_IDLE;
-                ppu->fetch_count++;
                 break;
         case FETCH_BITPLANE0_IDLE:
+                log_ppu("fetch_bitplane0_idle");
                 ppu->bg_fetcher.state = FETCH_BITPLANE0;
-                ppu->fetch_count++;
                 break;
         case FETCH_BITPLANE0:
+                log_ppu("fetch_bitplane0");
                 fetch_bg_bitplane0(ppu);
                 ppu->bg_fetcher.state = FETCH_BITPLANE1_IDLE;
-                ppu->fetch_count++;
                 break;
         case FETCH_BITPLANE1_IDLE:
+                log_ppu("fetch_bitplane1_idle");
                 ppu->bg_fetcher.state = FETCH_BITPLANE1;
-                ppu->fetch_count++;
                 break;
         case FETCH_BITPLANE1:
+                log_ppu("fetch_bitplane1");
                 fetch_bg_bitplane1(ppu);
-                
-                ppu->fetch_count = 0;
-                if (ppu->fifos_been_pushed_to) {
+
+                if (ppu->shift_counter_enabled) {
                         ppu->bg_fetcher.state = PUSH;
                 } else {
+                        /* printf("here!"); */
+                        load_bg_fifo(ppu);
                         ppu->bg_fetcher.state = FETCH_TILE_ID_IDLE;
-                        ppu->fifos_been_pushed_to = true;
+                        ppu->shift_counter_enabled = true;
+                        log_ppu("enabled shift counter");
                 }
                 break;
         case PUSH:
+                
                 if (ppu->bg_fifo.len == 0) {
+                        log_ppu("push worked immedietely");
                         load_bg_fifo(ppu);
                         ppu->bg_fetcher.state = FETCH_TILE_ID_IDLE;
+                        ppu->shift_count = 0;
+                        reset_shift_counter = true;
                 } else{
-                        ;
+                        log_ppu("couldn't push");
                 }
                 break;
         }
- 
+        
+        
+        /* if (enable_shift_counter) */
+        /*         ppu->shift_counter_enabled = true; */
+        if (reset_shift_counter)
+                ppu->shift_count = 0;
 }
 
 static void vblank(struct ppu *ppu, u8 *interrupt_flag)
@@ -525,10 +581,12 @@ static void write_ppu_reg(struct ppu *ppu, u8 v, u16 addr)
 {
         switch(addr) {
         case LCDC_ADDR:
+                log_ppu("lcdc_addr");
                 ppu->lcdc = v;
                 break;
         case STAT_ADDR:
                 ppu->stat = (v & ~0x7) | (ppu->stat & 0x7);
+                ppu->stat |= (1 << 7);
                 break;
         case SCY_ADDR:
                 ppu->scy = v;
@@ -540,7 +598,9 @@ static void write_ppu_reg(struct ppu *ppu, u8 v, u16 addr)
                 ppu->ly = v;
                 break;
         case LYC_ADDR:
+                printf("LYC = %d on tick %llu\n", v, *TICK);
                 ppu->lyc = v;
+                update_coincidence_flag(ppu);
                 break;
         case DMA_ADDR:
                 assert(v <= 0xDF); /* TODO: check what happens here? */

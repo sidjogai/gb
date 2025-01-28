@@ -177,13 +177,15 @@ struct ppu {
         u32  palette[4];        /* light to dark; ARGB8888 format */
         u32 *display_buf;       /* user-facing display; ARGB8888 format */
 
-        u8   fetch_count;       /* fetch counter (0 - 5) */
         u8   shift_count;       /* fifo shift counter (0 - 7) */
         u8   pixel_count;       /* pixel counter (0 - 167) */
 
-        /* pixel count is only incremented if shift count has reached SCX & 7 */
+        /* shift count only incremented after first B01 */
+        bool shift_counter_enabled;
+        /* pixel count only incremented if shift count has reached SCX & 7 */
         bool pixel_counter_enabled;
-        bool fifos_been_pushed_to;
+
+        bool prev_stat_line_high;
 
         struct fetcher {
                 u8 tile_id;
