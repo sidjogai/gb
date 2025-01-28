@@ -231,7 +231,7 @@ static void new_oam_scan(struct ppu *ppu)
 
         /* obj priority: lowest x first, and then oam index */
         for (u8 *p = ppu->oam; p < ppu->oam + 160; p += 4) {
-                u8 obj_y = *p - 16;
+                int obj_y = *p - 16;
                 if (ppu->ly >= obj_y && ppu->ly < obj_y + obj_height) {
                         struct obj obj = {
                                 .y          = p[0],
