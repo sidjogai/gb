@@ -47,6 +47,14 @@ static bool do_logging;
         }                                                               \
         } while (0)
 
+enum lcdc_flag {
+        BG_WIN_ENABLE = 1 << 0,
+        OBJ_ENABLE    = 1 << 1,
+        OBJ_SIZE      = 1 << 2,
+        BG_NAMETABLE  = 1 << 3,
+        LCD_ENABLE    = 1 << 7,
+};
+
 static void set_vram_access(struct ppu *ppu, bool enabled)
 {
         ppu->vram_accessible = enabled;
@@ -88,7 +96,7 @@ static bool check_stat(struct ppu *ppu, u8 *interrupt_flag);
 
 static void tick_ppu(struct ppu *ppu, u8 *interrupt_flag)
 {
-        if (!(ppu->lcdc >> 7)) {
+        if (!(ppu->lcdc & LCD_ENABLE)) {
                 ppu->ly = 0;
                 ppu->stat &= ~0x3;
                 ppu->dots_since_scanline_started = 0;
@@ -141,6 +149,8 @@ static void init_new_scanline(struct ppu *ppu)
         ppu->bg_fifo.head  = 0;
         ppu->obj_fifo.len  = 0;
         ppu->obj_fifo.head = 0;
+
+        ppu->obj_buf_len = 0;
 
         ppu->bg_fetcher.fn  = fetch_bg_tile_id_idle;
         ppu->obj_fetcher.fn = fetch_obj_tile_id_idle;
@@ -207,40 +217,36 @@ static void new_oam_scan(struct ppu *ppu)
 {
         /* TODO: Different behaviour after LCD re-enabled */
         assert(ppu->dots_since_scanline_started < 80);
+        assert(ppu->obj_buf_len == 0);
 
-        if (ppu->dots_since_scanline_started == 79) {
+        /* for now, just scan for all objects at the end of mode 2 */
+        if (ppu->dots_since_scanline_started != 79)
+                return;
 
-                /* just do it all in one go at the end */
-                ppu->obj_buf_len = 0;
+        u8 obj_height = (ppu->lcdc & OBJ_SIZE) ? 16 : 8;
 
-                u8 obj_height = (ppu->lcdc & (1 << 2)) ? 16 : 8;
+        for (u8 *p = ppu->oam; p < ppu->oam + 160; p += 4) {
+                u8 obj_y = *p - 16;
+                if (ppu->ly >= obj_y && ppu->ly < obj_y + obj_height) {
+                        struct obj obj = {
+                                .y          = p[0],
+                                .x          = p[1],
+                                .tile_index = p[2],
+                                .attributes = p[3],
+                        };
+                        ppu->obj_buf[ppu->obj_buf_len] = obj;
 
-                if (obj_height == 16) {/* TODO */}
+                        log_event(TEMP, "oam scan y = %d, x = %d, ind = %x",
+                                  obj.y, obj.x, obj.tile_index);
 
-                for (u8 *p = ppu->oam; p < ppu->oam + 160; p += 4) {
-                        u8 y = *p - 16;
-                        if (ppu->ly >= y && ppu->ly < y + obj_height) {
-                                ppu->obj_buf[ppu->obj_buf_len++] = (struct obj) {
-                                        .y          = p[0],
-                                        .x          = p[1],
-                                        .tile_index = p[2],
-                                        .attributes = p[3],
-                                };
-
-                                log_event(TEMP, "oam scan y = %d, x = %d, ind = %x",
-                                        ppu->obj_buf[ppu->obj_buf_len-1].y,
-                                        ppu->obj_buf[ppu->obj_buf_len-1].x,
-                                        ppu->obj_buf[ppu->obj_buf_len-1].tile_index);
-
-                                if (ppu->obj_buf_len == 10)
-                                        break;
-                        }
+                        if (++ppu->obj_buf_len == 10)
+                                break;
                 }
-
-                /* set up for mode 3 */
-                set_vram_access(ppu, false);
-                switch_to_mode(ppu, DRAWING);
         }
+
+        /* set up for mode 3 */
+        set_vram_access(ppu, false);
+        switch_to_mode(ppu, DRAWING);
 }
 
 static u16 vram_offset_to_addr(u16 offset)
@@ -383,7 +389,7 @@ static void fetch_bg_tile_id_idle(struct ppu *ppu)
 
 static void fetch_bg_tile_id(struct ppu *ppu)
 {
-        u8 nametable = ((ppu->lcdc >> 3) & 0x1);
+        u8 nametable = !!(ppu->lcdc & BG_NAMETABLE);
         u8 y         = (u8)(ppu->ly + ppu->scy) / 8;
         u8 x         = (u8)(ppu->pixel_count + ppu->scx) / 8;
 
@@ -475,7 +481,16 @@ static void fetch_obj_tile_id_idle(struct ppu *ppu)
 
 static void fetch_obj_tile_id(struct ppu *ppu)
 {
-        ppu->obj_fetcher.tile_id = ppu->obj_buf[ppu->obj_index].tile_index;
+        struct obj obj = ppu->obj_buf[ppu->obj_index];
+
+        ppu->obj_fetcher.tile_id = obj.tile_index;
+
+        if (ppu->lcdc & OBJ_SIZE) {
+                if (ppu->ly - (obj.y - 16) < 8)
+                        ppu->obj_fetcher.tile_id &= 0xFE;
+                else
+                        ppu->obj_fetcher.tile_id |= 0x01;
+        }
 
         ppu->obj_fetcher.fn = fetch_obj_bitplane0_idle;
         log_event(FIFO, "fetch_obj_tile_id");
@@ -583,8 +598,8 @@ static void new_drawing(struct ppu *ppu)
 
                 if (ppu->scx_pixels_dropped && ppu->pixel_count++ >= 8) {
                         bool use_bg_pixel = false;
-                        if (ppu->lcdc & 0x1) {
-                                if (!((ppu->lcdc >> 1) & 0x1))
+                        if (ppu->lcdc & BG_WIN_ENABLE) {
+                                if (!(ppu->lcdc & OBJ_ENABLE))
                                         use_bg_pixel = true;
                                 else if (obj.priority && bg.color || !obj.color)
                                         use_bg_pixel = true;
@@ -600,7 +615,7 @@ static void new_drawing(struct ppu *ppu)
                         }
 
                         color = (palette >> (color * 2)) & 0x3;
-                        if ((ppu->lcdc & 0x1) == 0)
+                        if (!(ppu->lcdc & BG_WIN_ENABLE))
                                 color = 0;
 
                         u32 gui_color = ppu->palette[color];
@@ -715,8 +730,8 @@ static void write_ppu_reg(struct ppu *ppu, u8 v, u16 addr)
 {
         switch(addr) {
         case LCDC_ADDR:;
-                bool lcd_was_enabled = ppu->lcdc >> 7;
-                bool lcd_enabled = v >> 7;
+                bool lcd_was_enabled = ppu->lcdc & LCD_ENABLE;
+                bool lcd_enabled = v & LCD_ENABLE;
                 if (lcd_was_enabled && !lcd_enabled)
                         log_event(LCD_TOGGLE, "LCD turned off");
 
