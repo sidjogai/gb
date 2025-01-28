@@ -175,22 +175,23 @@ static struct window windows[] = {
 
 /* enforce a delay to avoid toggling a window, saving the state, etc. many times
    per second as keypresses register over multiple frames */
-u64 last_misc_keypress;
-#define handle_misc_key_down(key, action) case key:    \
-        if (frame + 5 > last_misc_keypress) {          \
-                last_misc_keypress = frame; action;    \
-        }                                              \
-        break;                                         \
+static int last_misc_keypress;
+#define handle_misc_key_down(key, action) case key:             \
+        if (gb.ppu.frame + 5 > last_misc_keypress) {            \
+                last_misc_keypress = gb.ppu.frame; action;      \
+        }                                                       \
+        break;                                                  \
 
 int main(int argc, char *argv[])
 {
-        char *bootrom    = NULL;
-        char *rom        = NULL;
-        bool  limit_fps  = true;
-        u32  *palette    = palettes;
-        int   target_fps = 60;
+        char *bootrom        = NULL;
+        char *rom            = NULL;
+        bool  limit_fps      = true;
+        u32  *palette        = palettes;
+        int   target_fps     = 60;
+        bool  save_requested = false;
 
-        bool save_requested = false;
+        SDL_GameController *controller = NULL;
 
         (void)bootrom;
 
@@ -217,14 +218,19 @@ int main(int argc, char *argv[])
                 die("no rom supplied");
         rom = argv[optind];
 
-        if (SDL_Init(SDL_INIT_VIDEO) < 0)
+        if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) < 0)
                 sdl_fail();
+
+        /* TODO: support multiple joysticks */
+        if (SDL_NumJoysticks() == 1 && SDL_IsGameController(0))
+                if ((controller = SDL_GameControllerOpen(0)) == NULL)
+                        sdl_fail();
 
         for (int i = 0; i < len(windows); i++)
                 if (windows[i].shown)
                         init_window(&windows[i]);
 
-        u64 frame, start, elapsed;
+        u64 elapsed;
 
  reset:
         init_gb(&gb, gb_buf, palette, external_ram, rom_buf);
@@ -232,7 +238,6 @@ int main(int argc, char *argv[])
         skip_bootrom(&gb);
 
         load_rom(&gb, rom);
-        frame = 1;
 
         u64 target_duration = 1000000000 / target_fps;
 
@@ -256,6 +261,72 @@ int main(int argc, char *argv[])
                                         do_for_gb_keymap(handle_gb_key_up);
                                 }
                                 break;
+                        case SDL_CONTROLLERBUTTONDOWN:
+                                /* on the 8BitDo zero 2, the controllers seem to
+                                   be flipped */
+                                switch (event.cbutton.button) {
+                                case SDL_CONTROLLER_BUTTON_B:
+                                        gb.joypad.state[A] = true;
+                                        break;
+                                case SDL_CONTROLLER_BUTTON_A:
+                                        gb.joypad.state[B] = true;
+                                        break;
+                                case SDL_CONTROLLER_BUTTON_BACK:
+                                        gb.joypad.state[SELECT] = true;
+                                case SDL_CONTROLLER_BUTTON_START:
+                                        gb.joypad.state[START] = true;
+                                case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
+                                        if (gb.ppu.frame + 5 > last_misc_keypress) {
+                                                last_misc_keypress = gb.ppu.frame;
+                                                save_requested = true;
+                                        };
+                                        break;
+                                case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
+                                        if (gb.ppu.frame + 5 > last_misc_keypress) {
+                                                last_misc_keypress = gb.ppu.frame;
+                                                load_state(&gb, external_ram, rom);
+                                        };
+                                        break;
+                                }
+                                break;
+                        case SDL_CONTROLLERBUTTONUP:
+                                switch (event.cbutton.button) {
+                                case SDL_CONTROLLER_BUTTON_B:
+                                        gb.joypad.state[A] = false;
+                                        break;
+                                case SDL_CONTROLLER_BUTTON_A:
+                                        gb.joypad.state[B] = false;
+                                        break;
+                                case SDL_CONTROLLER_BUTTON_BACK:
+                                        gb.joypad.state[SELECT] = false;
+                                case SDL_CONTROLLER_BUTTON_START:
+                                        gb.joypad.state[START] = false;
+                                }
+                                break;
+                        case SDL_CONTROLLERAXISMOTION:
+                                switch (event.caxis.axis) {
+                                case SDL_CONTROLLER_AXIS_LEFTX:
+                                        if (event.caxis.value == -32768)
+                                                gb.joypad.state[LEFT] = true;
+                                        else if (event.caxis.value == 32767)
+                                                gb.joypad.state[RIGHT] = true;
+                                        else {
+                                                gb.joypad.state[LEFT] = 0;
+                                                gb.joypad.state[RIGHT] = 0;
+                                        }
+                                        break;
+                                case SDL_CONTROLLER_AXIS_LEFTY:
+                                        if (event.caxis.value == -32768)
+                                                gb.joypad.state[UP] = true;
+                                        else if (event.caxis.value == 32767)
+                                                gb.joypad.state[DOWN] = true;
+                                        else {
+                                                gb.joypad.state[UP] = 0;
+                                                gb.joypad.state[DOWN] = 0;
+                                        }
+                                        break;
+                                }
+
                         }
                 }
 
@@ -280,7 +351,7 @@ int main(int argc, char *argv[])
                 if (windows[SPRITES].shown)
                         draw_sprites(&gb.ppu, windows[SPRITES].buf, palette);
 
-                if (windows[INFO].shown && frame % 10 == 0)
+                if (windows[INFO].shown && gb.ppu.frame % 10 == 0)
                         draw_info(1,
                                   windows[INFO].buf,
                                   windows[INFO].width,
