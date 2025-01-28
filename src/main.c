@@ -17,23 +17,11 @@
 #error "System unsupported"
 #endif
 
-#ifdef GB_DEBUG
-#define Q assert(false);
-#else
-#define Q ;
-#endif
-
 typedef int8_t   i8;
 typedef uint8_t  u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
-typedef int      m_cycle;
-typedef int      t_cycle;
-typedef int      dot;
-
-static u64 *TICK;
-static u64 *FRAME;
 
 #define len(a) ((int)(sizeof(a) / sizeof(*a)))
 
@@ -129,55 +117,61 @@ static struct window windows[] = {
         code(KEY_DOWN,   gb.joypad.state[DOWN] = key_down)      \
         code(KEY_UP,     gb.joypad.state[UP] = key_down)
 
-#define do_for_misc_keymap(code)                                \
-        code(QUIT, goto quit)                                   \
-        code(RESET, goto reset)                                 \
-             code(LOAD, load_state(&gb, external_ram, rom);)    \
-        code(SAVE, save_requested = true;)                      \
-        code(TARGET_UNCAPPED_SPEED, limit_fps = false;)         \
-        code(TARGET_1X_SPEED,                                   \
-             target_fps = 60;                                   \
-             target_duration = 1000000000 / target_fps;)        \
-        code(TARGET_2X_SPEED, target_fps = 120;                 \
-             target_duration = 1000000000 / target_fps;)        \
-        code(TARGET_3X_SPEED,                                   \
-             target_fps = 180;                                  \
-             target_duration = 1000000000 / target_fps;)        \
-        code(TARGET_4X_SPEED,                                   \
-             target_fps = 240;                                  \
-             target_duration = 1000000000 / target_fps;)        \
-        code(TARGET_5X_SPEED,                                   \
-             target_fps = 300;                                  \
-             target_duration = 1000000000 / target_fps;)        \
-        code(TOGGLE_WINDOW_MAP_WINDOW,                          \
-             toggle_window_shown(&windows[WINDOW_MAP]))         \
-        code(TOGGLE_SPRITES_WINDOW,                             \
-             toggle_window_shown(&windows[SPRITES]))            \
-        code(TOGGLE_BG_MAP_WINDOW,                              \
-             toggle_window_shown(&windows[BG_MAP]))             \
-        code(TOGGLE_TILE_DATA_WINDOW,                           \
-             toggle_window_shown(&windows[TILE_DATA]))          \
-        code(INCREASE_SCALE,                                    \
-             for (int i = 0; i < len(windows); i++) {           \
-                     if (window_focused(&windows[i])) {         \
-                             int s = windows[i].scale;          \
-                             if (s < 9)                         \
-                                     s++;                       \
-                             rescale_window(&windows[i], s);    \
-                     }                                          \
-             })                                                 \
-        code(DECREASE_SCALE,                                    \
-             for (int i = 0; i < len(windows); i++) {           \
-                     if (window_focused(&windows[i])) {         \
-                             int s = windows[i].scale;          \
-                             if (s < 9)                         \
-                                     s++;                       \
-                             rescale_window(&windows[i], s);    \
-                     }                                          \
-             })
+#define do_for_misc_keymap(code)                                         \
+        code(QUIT, goto quit)                                            \
+        code(RESET, goto reset)                                          \
+             code(LOAD, load_state(&gb, external_ram, rom);)             \
+        code(SAVE, save_requested = true;)                               \
+        code(TARGET_UNCAPPED_SPEED, limit_fps = false;)                  \
+        code(TARGET_1X_SPEED,                                            \
+             target_fps = 60;                                            \
+             target_duration = 1000000000 / target_fps;)                 \
+        code(TARGET_2X_SPEED, target_fps = 120;                          \
+             target_duration = 1000000000 / target_fps;)                 \
+        code(TARGET_3X_SPEED,                                            \
+             target_fps = 180;                                           \
+             target_duration = 1000000000 / target_fps;)                 \
+        code(TARGET_4X_SPEED,                                            \
+             target_fps = 240;                                           \
+             target_duration = 1000000000 / target_fps;)                 \
+        code(TARGET_5X_SPEED,                                            \
+             target_fps = 300;                                           \
+             target_duration = 1000000000 / target_fps;)                 \
+        code(TOGGLE_WINDOW_MAP_WINDOW,                                   \
+             toggle_window_shown(&windows[WINDOW_MAP]))                  \
+        code(TOGGLE_SPRITES_WINDOW,                                      \
+             toggle_window_shown(&windows[SPRITES]))                     \
+        code(TOGGLE_BG_MAP_WINDOW,                                       \
+             toggle_window_shown(&windows[BG_MAP]))                      \
+        code(TOGGLE_TILE_DATA_WINDOW,                                    \
+             toggle_window_shown(&windows[TILE_DATA]))                   \
+        code(INCREASE_SCALE,                                             \
+             for (int i = 0; i < len(windows); i++) {                    \
+                     if (window_focused(&windows[i])) {                  \
+                             int s = windows[i].scale;                   \
+                             if (s < 9)                                  \
+                                     s++;                                \
+                             rescale_window(&windows[i], s);             \
+                     }                                                   \
+             })                                                          \
+        code(DECREASE_SCALE,                                             \
+             for (int i = 0; i < len(windows); i++) {                    \
+                     if (window_focused(&windows[i])) {                  \
+                             int s = windows[i].scale;                   \
+                             if (s > 0)                                  \
+                                     s--;                                \
+                             rescale_window(&windows[i], s);             \
+                     }                                                   \
+             })                                                          \
+        code(CYCLE_PALETTE,                                              \
+             if (palette - palettes < len(palettes) - 4)                 \
+                     palette += 4;                                       \
+             else                                                        \
+                     palette = palettes;                                 \
+             memcpy(gb.ppu.palette, palette, sizeof gb.ppu.palette));
 
-#define handle_gb_key_down(key, action) case key: key_down = true; action; break;
-#define handle_gb_key_up(key, action) case key: key_down = false; action; break;
+#define handle_gb_key_down(key, action) case key: action; break;
+#define handle_gb_key_up(key, action) case key: action; break;
 
 /* enforce a delay to avoid toggling a window, saving the state, etc. many times
    per second as keypresses register over multiple frames */
@@ -193,7 +187,7 @@ int main(int argc, char *argv[])
         char *bootrom    = NULL;
         char *rom        = NULL;
         bool  limit_fps  = true;
-        u32  *palette    = palettes[0];
+        u32  *palette    = palettes;
         int   target_fps = 60;
 
         bool save_requested = false;
@@ -231,7 +225,6 @@ int main(int argc, char *argv[])
                         init_window(&windows[i]);
 
         u64 frame, start, elapsed;
-        FRAME = &frame;
 
  reset:
         init_gb(&gb, gb_buf, palette, external_ram, rom_buf);
@@ -251,12 +244,14 @@ int main(int argc, char *argv[])
                 if (SDL_PollEvent(&event)) {
                         switch (event.type) {
                         case SDL_KEYDOWN:
+                                key_down = true;
                                 switch (event.key.keysym.sym) {
                                         do_for_gb_keymap(handle_gb_key_down);
                                         do_for_misc_keymap(handle_misc_key_down);
                                 }
                                 break;
                         case SDL_KEYUP:
+                                key_down = false;
                                 switch (event.key.keysym.sym) {
                                         do_for_gb_keymap(handle_gb_key_up);
                                 }

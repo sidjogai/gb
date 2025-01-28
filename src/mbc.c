@@ -28,7 +28,7 @@ static u8 read_external_ram(struct mbc *m, u16 addr)
 {
         switch (m->type) {
         case NO_MBC:
-                Q; 
+                assert(false);
                 return 0;
         case MBC1: 
                 return mbc1_read_external_ram(m, addr);
@@ -39,7 +39,7 @@ static void write_external_ram(struct mbc *m, u8 v, u16 addr)
 {
         switch (m->type) {
         case NO_MBC:
-                Q;
+                assert(false);
                 break;
         case MBC1:
                 mbc1_write_external_ram(m, v, addr);

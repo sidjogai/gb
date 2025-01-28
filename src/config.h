@@ -22,6 +22,8 @@ enum keymap {
         SAVE                     = 'v',
         LOAD                     = 'o',
 
+        CYCLE_PALETTE            = 'p',
+
         TOGGLE_BG_MAP_WINDOW     = 'b',
         TOGGLE_INFO_WINDOW       = 'i',
         TOGGLE_TILE_DATA_WINDOW  = 't',
@@ -32,11 +34,11 @@ enum keymap {
         INCREASE_SCALE           = ']',
 };
 
-static u32 palettes[][4] = {
+static u32 palettes[] = {
         /* darkest   dark        light       lightest */
-        {0xFFE0F8D0, 0xFF88C070, 0xFF346856, 0xFF081820}, /* green (light) */
-        {0xFF9BBC0F, 0xFF8BAC0F, 0xFF306230, 0xFF0F380F}, /* green */
-        {0xFFFFFFFF, 0xFFB6B6B6, 0xFF676767, 0xFF000000}, /* gray */
+        0xFFE0F8D0, 0xFF88C070, 0xFF346856, 0xFF081820, /* green (light) */
+        0xFF9BBC0F, 0xFF8BAC0F, 0xFF306230, 0xFF0F380F, /* green */
+        0xFFFFFFFF, 0xFFB6B6B6, 0xFF676767, 0xFF000000, /* gray */
 };
 
 /* ============================= Debug options ============================== */
