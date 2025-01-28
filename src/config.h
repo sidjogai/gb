@@ -12,6 +12,15 @@ enum keymap {
         QUIT                     = SDLK_ESCAPE,
         RESET                    = 'r',
 
+        TARGET_UNCAPPED_SPEED    = '0',
+        TARGET_1X_SPEED          = '1',
+        TARGET_2X_SPEED          = '2',
+        TARGET_3X_SPEED          = '3',
+        TARGET_4X_SPEED          = '4',
+        TARGET_5X_SPEED          = '5',
+
+        SAVE = '!',
+
         TOGGLE_BG_MAP_WINDOW     = 'b',
         TOGGLE_INFO_WINDOW       = 'i',
         TOGGLE_TILE_DATA_WINDOW  = 't',

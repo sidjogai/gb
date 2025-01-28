@@ -120,45 +120,61 @@ static struct window windows[] = {
         },
 };
 
-#define DO_GB_KEYMAP(code)                                              \
-        code(KEY_A,      gb.joypad.state[A] = key_down)                 \
-        code(KEY_B,      gb.joypad.state[B] = key_down)                 \
-        code(KEY_START,  gb.joypad.state[START] = key_down)             \
-        code(KEY_SELECT, gb.joypad.state[SELECT] = key_down)            \
-        code(KEY_LEFT,   gb.joypad.state[LEFT] = key_down)              \
-        code(KEY_RIGHT,  gb.joypad.state[RIGHT] = key_down)             \
-        code(KEY_DOWN,   gb.joypad.state[DOWN] = key_down)              \
+#define DO_GB_KEYMAP(code)                                      \
+        code(KEY_A,      gb.joypad.state[A] = key_down)         \
+        code(KEY_B,      gb.joypad.state[B] = key_down)         \
+        code(KEY_START,  gb.joypad.state[START] = key_down)     \
+        code(KEY_SELECT, gb.joypad.state[SELECT] = key_down)    \
+        code(KEY_LEFT,   gb.joypad.state[LEFT] = key_down)      \
+        code(KEY_RIGHT,  gb.joypad.state[RIGHT] = key_down)     \
+        code(KEY_DOWN,   gb.joypad.state[DOWN] = key_down)      \
         code(KEY_UP,     gb.joypad.state[UP] = key_down)
 
-#define DO_MISC_KEYMAP(code)                                            \
-        code(FAST, limit_fps = !limit_fps)                              \
-        code(QUIT, goto quit)                                           \
-        code(RESET, goto reset)                                         \
-        code(TOGGLE_WINDOW_MAP_WINDOW,                                  \
-             toggle_window_shown(&windows[WINDOW_MAP]))                 \
-        code(TOGGLE_SPRITES_WINDOW,                                     \
-             toggle_window_shown(&windows[SPRITES]))                    \
-        code(TOGGLE_BG_MAP_WINDOW,                                      \
-             toggle_window_shown(&windows[BG_MAP]))                     \
-        code(TOGGLE_TILE_DATA_WINDOW,                                   \
-             toggle_window_shown(&windows[TILE_DATA]))                  \
-        code(INCREASE_SCALE,                                            \
-             for (int i = 0; i < len(windows); i++) {                   \
-                     if (window_focused(&windows[i])) {                 \
-                             int s = windows[i].scale;                  \
-                             if (s < 9)                                 \
-                                     s++;                               \
-                             rescale_window(&windows[i], s);            \
-                     }                                                  \
-             })                                                         \
-        code(DECREASE_SCALE,                                            \
-             for (int i = 0; i < len(windows); i++) {                   \
-                     if (window_focused(&windows[i])) {                 \
-                             int s = windows[i].scale;                  \
-                             if (s < 9)                                 \
-                                     s++;                               \
-                             rescale_window(&windows[i], s);            \
-                     }                                                  \
+#define DO_MISC_KEYMAP(code)                                    \
+        code(QUIT, goto quit)                                   \
+        code(RESET, goto reset)                                 \
+        code(SAVE,                                              \
+             save_state(&gb, external_ram, "gb-out"))           \
+        code(TARGET_UNCAPPED_SPEED, limit_fps = 0;)             \
+        code(TARGET_1X_SPEED,                                   \
+             target_fps = 60;                                   \
+             target_duration = 1000000000 / target_fps;)        \
+        code(TARGET_2X_SPEED, target_fps = 120;                 \
+             target_duration = 1000000000 / target_fps;)        \
+        code(TARGET_3X_SPEED,                                   \
+             target_fps = 180;                                  \
+             target_duration = 1000000000 / target_fps;)        \
+        code(TARGET_4X_SPEED,                                   \
+             target_fps = 240;                                  \
+             target_duration = 1000000000 / target_fps;)        \
+        code(TARGET_5X_SPEED,                                   \
+             target_fps = 300;                                  \
+             target_duration = 1000000000 / target_fps;)        \
+        code(TOGGLE_WINDOW_MAP_WINDOW,                          \
+             toggle_window_shown(&windows[WINDOW_MAP]))         \
+        code(TOGGLE_SPRITES_WINDOW,                             \
+             toggle_window_shown(&windows[SPRITES]))            \
+        code(TOGGLE_BG_MAP_WINDOW,                              \
+             toggle_window_shown(&windows[BG_MAP]))             \
+        code(TOGGLE_TILE_DATA_WINDOW,                           \
+             toggle_window_shown(&windows[TILE_DATA]))          \
+        code(INCREASE_SCALE,                                    \
+             for (int i = 0; i < len(windows); i++) {           \
+                     if (window_focused(&windows[i])) {         \
+                             int s = windows[i].scale;          \
+                             if (s < 9)                         \
+                                     s++;                       \
+                             rescale_window(&windows[i], s);    \
+                     }                                          \
+             })                                                 \
+        code(DECREASE_SCALE,                                    \
+             for (int i = 0; i < len(windows); i++) {           \
+                     if (window_focused(&windows[i])) {         \
+                             int s = windows[i].scale;          \
+                             if (s < 9)                         \
+                                     s++;                       \
+                             rescale_window(&windows[i], s);    \
+                     }                                          \
              })
 
 #define handle_gb_key_down(key, action) case key: key_down = true; action; break;
@@ -166,24 +182,20 @@ static struct window windows[] = {
 
 /* enforce a delay to avoid toggling a window, saving the state, etc. many times
    per second as keypresses register over multiple frames */
-#define make_misc_key(key, action) MISC##key,
-enum misc_key {
-        DO_MISC_KEYMAP(make_misc_key)
-        MISC_KEYMAP_LEGNTH
-};
-int last_frame_pressed[MISC_KEYMAP_LEGNTH] = {0};
-#define handle_misc_key_down(key, action) case key:             \
-        if (frame + 5 > last_frame_pressed[MISC##key]) {        \
-                last_frame_pressed[MISC##key] = frame;          \
-                action; break;                                  \
-        } 
+u64 last_misc_keypress;
+#define handle_misc_key_down(key, action) case key:    \
+        if (frame + 5 > last_misc_keypress) {          \
+                last_misc_keypress = frame; action;    \
+        }                                              \
+        break;                                         \
 
 int main(int argc, char *argv[])
 {
-        char *bootrom               = NULL;
-        char *rom                   = NULL;
-        bool  limit_fps             = true;
-        u32  *palette               = palettes[0];
+        char *bootrom    = NULL;
+        char *rom        = NULL;
+        bool  limit_fps  = true;
+        u32  *palette    = palettes[0];
+        int   target_fps = 60;
 
         (void)bootrom;
 
@@ -229,8 +241,10 @@ int main(int argc, char *argv[])
         load_rom(&gb, rom);
         frame = 1;
 
+        u64 target_duration = 1000000000 / target_fps;
+
         for (; ; frame++) {
-                start = clock_ns();
+                u64 start = clock_ns();
 
                 bool key_down;
                 SDL_Event event;
@@ -250,12 +264,10 @@ int main(int argc, char *argv[])
                         }
                 }
 
-                u64 gb_t0 = clock_ns();
+
 
                 while(gb.cpu.tick <= frame * (70224 / 4))
                         step_cpu(&gb.cpu);
-
-                int gb_fps = 1000000000 / (clock_ns() - gb_t0);
 
                 if (windows[TILE_DATA].shown)
                         draw_tile_data(&gb.ppu, windows[TILE_DATA].buf);
@@ -270,7 +282,7 @@ int main(int argc, char *argv[])
                         draw_sprites(&gb.ppu, windows[SPRITES].buf, palette);
 
                 if (windows[INFO].shown && frame % 10 == 0)
-                        draw_info(gb_fps,
+                        draw_info(1,
                                   windows[INFO].buf,
                                   windows[INFO].width,
                                   windows[INFO].height,
@@ -280,10 +292,17 @@ int main(int argc, char *argv[])
                         if (windows[i].shown)
                                 render_window(&windows[i]);
 
-                if (limit_fps && (elapsed = clock_ns() - start) < 16666667)
-                        sleep_ns(16666667 - elapsed);
+                if (limit_fps && (elapsed = clock_ns() - start) < target_duration)
+                        sleep_ns(target_duration - elapsed);
+
+                static char buf[20] = {0};
+                u64 end = clock_ns();
+                int fps = 1000000000 / (end - start);
+                assert(end - start);
+                snprintf(buf, 20, "gb - %d fps", fps);
+                SDL_SetWindowTitle(windows[GB].window, buf);
         }
 
-quit:
+ quit:
         return 0;
 }

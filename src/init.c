@@ -125,3 +125,7 @@ static void load_rom(struct gameboy *gb, const char *path)
 }
 
 
+static void save_state(struct gameboy *gb, u8 *external_ram, const char *path)
+{
+        puts(path);
+}
