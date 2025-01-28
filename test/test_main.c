@@ -38,6 +38,25 @@ static u64 *FRAME;
 #define ASSERT_FAILURE_CODE 15
 
 #define PPU_LOGGING_ENABLED 0
+#define LOG_PPU_LYC_WRITE   0 /* LYC register written to */
+#define LOG_PPU_BGP_WRITE   0 /* BGP register written to */
+#define LOG_PPU_STAT_WRITE  0 /* STAT register written to */
+#define LOG_PPU_LCDC_WRITE  0 /* LCDC register written to */
+#define LOG_PPU_SCX_WRITE   0 /* SCX register written to */
+#define LOG_PPU_VBLANK_IRQ  0 /* VBlank interrupt requested */
+#define LOG_PPU_STAT_IRQ    0 /* STAT interrupt requested */
+#define LOG_PPU_MODE_SWITCH 0 /* PPU mode switched */
+
+#define LOG_PPU_OAM_ACCESS  0 /* OAM read/write access changed */
+#define LOG_PPU_VRAM_ACCESS 0 /* VRAM read/write access changed */
+
+#define LOG_PPU_MODE3_TIMING 1 /* */
+#define LOG_PPU_LCD_TOGGLE  1 /* LCD turned on or off */
+
+#define TRACE_CPU 0 /* Log CPU state after each instruction */
+
+#define LOG_CPU_EI_DI 0 /* Interrupts enabled or disabled */
+
 
 #define LOG_PPU_LYC_WRITE   0
 #define LOG_PPU_BGP_WRITE   0
@@ -50,6 +69,8 @@ static u64 *FRAME;
 #define LOG_PPU_OAM_ACCESS  0
 #define LOG_PPU_VRAM_ACCESS 0
 #define LOG_PPU_LCD_TOGGLE  0
+#define LOG_PPU_TEMP   0
+
 
 #define TRACE_CPU 0
 

@@ -23,6 +23,7 @@ enum keymap {
 };
 
 static u32 palettes[][4] = {
+        /* darkest   dark        light       lightest */
         {0xFFE0F8D0, 0xFF88C070, 0xFF346856, 0xFF081820}, /* green (light) */
         {0xFF9BBC0F, 0xFF8BAC0F, 0xFF306230, 0xFF0F380F}, /* green */
         {0xFFFFFFFF, 0xFFB6B6B6, 0xFF676767, 0xFF000000}, /* gray */
@@ -32,17 +33,21 @@ static u32 palettes[][4] = {
 
 #define PPU_LOGGING_ENABLED 1 /* Whether any PPU logging is enabled */
 
-#define LOG_PPU_LYC_WRITE   1 /* LYC register written to */
-#define LOG_PPU_BGP_WRITE   1 /* BGP register written to */
-#define LOG_PPU_STAT_WRITE  1 /* STAT register written to */
-#define LOG_PPU_LCDC_WRITE  1 /* LCDC register written to */
-#define LOG_PPU_SCX_WRITE   1 /* SCX register written to */
-#define LOG_PPU_VBLANK_IRQ  1 /* VBlank interrupt requested */
-#define LOG_PPU_STAT_IRQ    1 /* STAT interrupt requested */
+#define LOG_PPU_LYC_WRITE   0 /* LYC register written to */
+#define LOG_PPU_BGP_WRITE   0 /* BGP register written to */
+#define LOG_PPU_STAT_WRITE  0 /* STAT register written to */
+#define LOG_PPU_LCDC_WRITE  0 /* LCDC register written to */
+#define LOG_PPU_SCX_WRITE   0 /* SCX register written to */
+#define LOG_PPU_VBLANK_IRQ  0 /* VBlank interrupt requested */
+#define LOG_PPU_STAT_IRQ    0 /* STAT interrupt requested */
 #define LOG_PPU_MODE_SWITCH 0 /* PPU mode switched */
+#define LOG_PPU_TEMP 1
+
 #define LOG_PPU_OAM_ACCESS  0 /* OAM read/write access changed */
 #define LOG_PPU_VRAM_ACCESS 0 /* VRAM read/write access changed */
-#define LOG_PPU_LCD_TOGGLE  1 /* LCD turned on or off */
+
+#define LOG_PPU_MODE3_TIMING 0 /* */
+#define LOG_PPU_LCD_TOGGLE  0 /* LCD turned on or off */
 
 #define TRACE_CPU 0 /* Log CPU state after each instruction */
 

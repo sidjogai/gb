@@ -124,7 +124,7 @@ struct cpu {
         u8 ime; /* IME: interrupt master enable flag [write only] */
         u8 interrupt_enable; /* FFFF - IE: Interrupt enable */
         u8 interrupt_flag; /* FF0F — IF: Interrupt flag */
-        
+
         bool last_instr_was_ei;
         bool halted;
         bool halt_bug;
@@ -162,6 +162,11 @@ struct ppu {
 
         u32  palette[4];        /* light to dark; ARGB8888 format */
         u32 *display_buf;       /* user-facing display; ARGB8888 format */
+
+        /*
+           PCNT is only incremented if shift_count has reached SCX & 7.
+           Pushing pixels to LCD is only done when pxiel_count >= 8.
+        */
 
         u8   shift_count;       /* fifo shift counter (0 - 7) */
         u8   pixel_count;       /* pixel counter (0 - 167) */
@@ -230,6 +235,10 @@ struct ppu {
                 bool seen;
         } obj_slots[10];
         int nslots;
+
+        bool sprite_encountered;
+        int obj_index; /* index into obj_slots for current OBJ encountered */
+        bool final_bg_fetch;
 
         struct mem *mem; /* required for OAM DMA */
 };
