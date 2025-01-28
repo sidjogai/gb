@@ -123,12 +123,12 @@ def compile(cmd):
 
 def run_tests(tests):
     for name in tests:
-        result = subprocess.run(["./gb-test", name], capture_output=True, text=True)
+        result = subprocess.run(["./gb-test", name])
         if result.returncode == 0:
             msg = "\033[92mPASS\033[0m" if sys.stdout.isatty() else "PASS"
         else:
             msg = "\033[91mFAIL\033[0m" if sys.stdout.isatty() else "FAIL"
-        print(f"{name:<40}{' ':>16}{msg}")
+        print(f"{name:<50}{' ':>16}{msg}")
 
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "fetch":

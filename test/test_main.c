@@ -88,6 +88,10 @@ int main(int argc, char *argv[])
         load_rom(&gb, rom);
         frame = 1;
 
+#ifdef GB_PROFILE
+        u64 total_ns = 0;
+#endif
+
         for (SDL_Event event; ; frame++) {
                 if (SDL_PollEvent(&event)) {
                         switch (event.type) {
@@ -95,14 +99,31 @@ int main(int argc, char *argv[])
                                 switch (event.key.keysym.sym) {
                                 case SDLK_ESCAPE:
                                         return 1; /* fail */
-                                case SDLK_SPACE:
-                                        return 0; /* pass */
+                                case SDLK_SPACE:;
+#ifdef GB_PROFILE
+                                        u64 avg_ns = total_ns / frame;
+                                        u64 avg_fps = 1000000000 / avg_ns;
+                                        printf("frames = %llu, avg fps = %llu\n",
+                                               frame, avg_fps);
+#endif
+                                       return 0; /* pass */
                                 }
                         }
                 }
 
+#ifdef GB_PROFILE
+                u64 frame_start = clock_ns();
+#endif
                 while(gb.cpu.tick <= frame * 70224)
                         step_cpu(&gb.cpu);
+
+#ifdef GB_PROFILE
+                u64 delta = clock_ns() - frame_start;
+                total_ns += delta;
+                double ms = delta / 1E6;
+                u64 fps = 1000000000 / delta;
+                printf("frame %llu - %f ms (= %llu fps)\n", frame, ms, fps);
+#endif
 
                 render_window(&gb_window);
         }

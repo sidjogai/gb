@@ -102,7 +102,6 @@ static void draw_bg_map(struct ppu *ppu, u32 buf[])
         draw_viewport_border(ppu, buf, ppu->palette[3]);
 }
 
-
 /* =========================== window map viewer ============================ */
 
 static void draw_window_map(struct ppu *ppu, u32 buf[])
@@ -207,7 +206,8 @@ static u8 * tile_char(int c)
         };
         if (c == ' ')
                 return tile_data + 16 * (10 + 26);
-        return tile_data + 16 * (c >= '0' && c <= '9' ? c - '0' : 10 + c - 'a');
+        int offset = (c >= '0' && c <= '9') ? (c - '0') : (10 + c - 'a');
+        return tile_data + 16 * offset;
 }
 
 static void draw_info_string_(char *s, int row, u32 *buf, int bufw, u32 *palette)
@@ -224,7 +224,6 @@ static void draw_info_string_(char *s, int row, u32 *buf, int bufw, u32 *palette
                 draw_info_string_(row_buf, col++, buf, bufw, palette);  \
         } while(0)                                                      \
 
-
 static void draw_info(int fps, u32 *buf, int bufw, int bufh, u32 *palette, struct gameboy *gb)
 {
         for (int i = 0; i < bufw * bufh; i++)
@@ -237,5 +236,4 @@ static void draw_info(int fps, u32 *buf, int bufw, int bufh, u32 *palette, struc
         draw_info_string("ppu mode %d", gb->ppu.mode);
         draw_info_string("lx %d", gb->ppu.lx);
         draw_info_string("ly %d", gb->ppu.ly);
-        
 }

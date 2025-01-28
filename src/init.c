@@ -12,11 +12,11 @@ static void skip_bootrom(struct gameboy *gb)
 
         cpu->mem->div = 0xAB << 8;
 
-        write_mem(cpu->mem, 0x00, REG_TIMA_ADDR, cpu->tick);
-        write_mem(cpu->mem, 0x00, REG_TMA_ADDR, cpu->tick);
-        write_mem(cpu->mem, 0xF8, REG_TAC_ADDR, cpu->tick);
-        write_mem(cpu->mem, 0xE1, REG_IF_ADDR, cpu->tick);
-        write_mem(cpu->mem, 0x00, REG_IE_ADDR, cpu->tick);
+        write_mem(cpu->mem, 0x00, TIMA_ADDR);
+        write_mem(cpu->mem, 0x00, TMA_ADDR);
+        write_mem(cpu->mem, 0xF8, TAC_ADDR);
+        write_mem(cpu->mem, 0xE1, REG_IF_ADDR);
+        write_mem(cpu->mem, 0x00, REG_IE_ADDR);
 }
 
 static void load_bootrom(struct gameboy *gb, const char *filename)

@@ -1,26 +1,26 @@
 static void tick_cpu(struct cpu *cpu)
 {
         cpu->tick += 4;
-        sync_timers(cpu->mem->timer, cpu->tick, &cpu->mem->int_flag);
-        sync_ppu(cpu->mem->ppu, cpu->tick, &cpu->mem->int_flag);
+        sync_timer(cpu->mem->timer, &cpu->mem->int_flag);
+        sync_ppu(cpu->mem->ppu, &cpu->mem->int_flag);
 }
 
 static void cpu_write(struct cpu *cpu, u16 addr, u8 v)
 {
-        write_mem(cpu->mem, v, addr, cpu->tick);
+        write_mem(cpu->mem, v, addr);
         tick_cpu(cpu);
 }
 
 static u8 cpu_read(struct cpu *cpu, u16 addr)
 {
-        u8 v = read_mem(cpu->mem, addr, cpu->tick);
+        u8 v = read_mem(cpu->mem, addr);
         tick_cpu(cpu);
         return v;
 }
 
 static u8 cpu_fetch(struct cpu *cpu)
 {
-        u8 v = read_mem(cpu->mem, cpu->regs.pc++, cpu->tick);
+        u8 v = read_mem(cpu->mem, cpu->regs.pc++);
         tick_cpu(cpu);
         return v;
 }

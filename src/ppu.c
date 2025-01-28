@@ -168,9 +168,9 @@ static void hblank(struct ppu *ppu, u8 *interrupt_flag)
         }
 }
 
-static void oam_dma(struct ppu *ppu, tick TODO_cur_tick);
+static void oam_dma(struct ppu *ppu);
 
-static void sync_ppu(struct ppu *ppu, tick cur_tick, u8 *interrupt_flag)
+static void sync_ppu(struct ppu *ppu, u8 *interrupt_flag)
 {
         switch (ppu->mode) {
         case OAM_SCAN:
@@ -180,7 +180,7 @@ static void sync_ppu(struct ppu *ppu, tick cur_tick, u8 *interrupt_flag)
         case DRAWING:;
                 /* assert(drawing_invariant(ppu)); */
                 drawing(ppu, interrupt_flag);
-                oam_dma(ppu, 0); /* TODO: check this */
+                oam_dma(ppu); /* TODO: check this */
                 break;
         case HBLANK:
                 /* assert(hblank_invariant(ppu)); */
@@ -192,7 +192,7 @@ static void sync_ppu(struct ppu *ppu, tick cur_tick, u8 *interrupt_flag)
                 break;
         }
 
-        oam_dma(ppu, cur_tick);
+        oam_dma(ppu);
 }
 
 static struct fifo_entry pop_fifo(struct fifo *fifo)
@@ -535,7 +535,7 @@ static void vblank(struct ppu *ppu, u8 *interrupt_flag)
 
 }
 
-static void oam_dma(struct ppu *ppu, tick TODO_cur_tick)
+static void oam_dma(struct ppu *ppu)
 {
         if (!ppu->dma.in_progress)
                 return;
@@ -549,7 +549,7 @@ static void oam_dma(struct ppu *ppu, tick TODO_cur_tick)
 
         assert(offset >= 0 && offset < len(ppu->oam));
 
-        u8 v = read_mem(ppu->mem, (u16)(src_addr + offset), TODO_cur_tick);
+        u8 v = read_mem(ppu->mem, (u16)(src_addr + offset));
 
         ppu->oam[offset] = v;
 
@@ -682,7 +682,7 @@ static u8 read_wx(struct ppu *ppu)
         return ppu->wx;
 }
 
-static void write_dma(struct ppu *ppu, u8 v, tick TODO_cur_tick)
+static void write_dma(struct ppu *ppu, u8 v)
 {
         if (v > 0xDF)
                 die("TODO: check what to do here\n");

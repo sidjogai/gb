@@ -14,10 +14,10 @@ enum addr {
         OAM_START       = 0xFE00,
         OAM_END         = 0xFE9F,
         IOREG_START     = 0xFF00,
-        REG_DIV_ADDR    = 0xFF04,
-        REG_TIMA_ADDR   = 0xFF05,
-        REG_TMA_ADDR    = 0xFF06,
-        REG_TAC_ADDR    = 0xFF07,
+        DIV_ADDR        = 0xFF04,
+        TIMA_ADDR       = 0xFF05,
+        TMA_ADDR        = 0xFF06,
+        TAC_ADDR        = 0xFF07,
         REG_IF_ADDR     = 0xFF0F,
         LCDC_ADDR       = 0xFF40,
         STAT_ADDR       = 0xFF41,
@@ -64,8 +64,8 @@ struct mem {
 
 };
 
-static void write_mem(struct mem *, u8 v, u16 addr, tick tick);
-static u8   read_mem(struct mem *, u16 addr, tick tick);
+static void write_mem(struct mem *, u8 v, u16 addr);
+static u8 read_mem(struct mem *mem, u16 addr);
 
 /* ================================= mbc.c ================================== */
 
@@ -91,38 +91,28 @@ struct mbc {
 };
 
 
-static u8 read_external_ram(struct mbc *mbc, u16 addr);
-static u8 read_rom(struct mbc *mbc, u16 addr);
-static void write_external_ram(struct mbc *mbc, u8 v, u16 addr);
-static void write_rom(struct mbc *mbc, u8 v, u16 addr);
+static u8   read_external_ram(struct mbc *mbc, u16);
+static u8   read_rom(struct mbc *mbc, u16);
+static void write_external_ram(struct mbc *mbc, u8 v, u16);
+static void write_rom(struct mbc *mbc, u8, u16);
 
 /* ================================ timer.c ================================= */
 
 struct timer {
-        struct {
-                bool  is_pending;
-                tick tick_due;
-        } irq;
-        bool prev_result;
-        u16  div;
-        u8   tac;
-        u8   tima;
-        u8   tma;
+        u16 div;  /* FF04 - DIV: divider register (upper byte mapped) */
+        u8  tima; /* FF05 - TIMA: Timer counter */
+        u8  tma;  /* FF06 - TMA: Timer modulo */
+        u8  tac;  /* FF07 - TAC: Timer control */
+
+        bool prev_and_result;   /* last result of DIV counter & timer_enabled */
+        bool tima_overflowed;   /* reset when TIMA is reloaded */
+        bool tima_reloaded;     /* whether TIMA was reloaded this cycle */
+        int  cycles_since_tima_overflow; /* m cycles */
 };
 
-static void sync_timers(struct timer *, tick cur_tick, u8 *interrupt_flag);
-
-static void write_div(struct timer *, u8);
-static u8   read_div(struct timer *);
-
-static void write_tima(struct timer *, u8, tick cur_tick);
-static u8   read_tima(struct timer *);
-
-static void write_tma(struct timer *, u8);
-static u8   read_tma(struct timer *);
-
-static void write_tac(struct timer *, u8);
-static u8   read_tac(struct timer *);
+static void sync_timer(struct timer *, u8 *interrupt_flag);
+static void write_timer(struct timer *, u8, u16);
+static u8   read_timer(struct timer *, u16);
 
 /* ================================= cpu.c ================================== */
 
@@ -256,7 +246,7 @@ struct ppu {
         int nslots;
 };
 
-static void sync_ppu(struct ppu *, tick cur_tick, u8 *interrupt_flag);
+static void sync_ppu(struct ppu *ppu, u8 *interrupt_flag);
 
 static void write_vram(struct ppu *, u8, u16 addr);
 static u8   read_vram(struct ppu *, u16 addr);
@@ -285,7 +275,7 @@ static u8   read_lyc(struct ppu *);
 static void write_bgp(struct ppu *, u8);
 static u8   read_bgp(struct ppu *);
 
-static void write_dma(struct ppu *, u8, tick cur_tick);
+static void write_dma(struct ppu *ppu, u8 v);
 static u8   read_dma(struct ppu *);
 
 static void write_wy(struct ppu *, u8);

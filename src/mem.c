@@ -7,7 +7,7 @@ static u8 invalid_read(u16 addr) {
         return 0xFF;
 }
 
-static void write_mem(struct mem *mem, u8 v, u16 addr, tick tick)
+static void write_mem(struct mem *mem, u8 v, u16 addr)
 {
         if (addr <= 0x7FFF)
                 write_rom(mem->mbc, v, addr);
@@ -33,14 +33,8 @@ static void write_mem(struct mem *mem, u8 v, u16 addr, tick tick)
                 ;
         else if (addr < 0xFF04)
                 invalid_write(v, addr);
-        else if (addr == 0xFF04)
-                write_div(mem->timer, v);
-        else if (addr == 0xFF05)
-                write_tima(mem->timer, v, tick);
-        else if (addr == 0xFF06)
-                write_tma(mem->timer, v);
-        else if (addr == 0xFF07)
-                write_tac(mem->timer, v);
+        else if (addr <= 0xFF07)
+                write_timer(mem->timer, v, addr);
         else if (addr < 0xFF0F)
                 invalid_write(v, addr);
         else if (addr == 0xFF0F)
@@ -64,7 +58,7 @@ static void write_mem(struct mem *mem, u8 v, u16 addr, tick tick)
         else if (addr == 0xFF45)
                 write_lyc(mem->ppu, v);
         else if (addr == 0xFF46)
-                write_dma(mem->ppu, v, tick);
+                write_dma(mem->ppu, v);
         else if (addr == 0xFF47)
                 write_bgp(mem->ppu, v);
         else if (addr == 0xFF48)
@@ -89,7 +83,7 @@ static void write_mem(struct mem *mem, u8 v, u16 addr, tick tick)
                 die("write_mem: invalid address $%.04x", addr);
 }
 
-static u8 read_mem(struct mem *mem, u16 addr, tick tick)
+static u8 read_mem(struct mem *mem, u16 addr)
 {
         u8 v = 0xFF;
         if (addr <= 0x7FFF)
@@ -118,15 +112,8 @@ static u8 read_mem(struct mem *mem, u16 addr, tick tick)
 #endif
         else if (addr < 0xFF04)
                 invalid_read(addr);
-        else if (addr == 0xFF04)
-                v = read_div(mem->timer);
-        else if (addr == 0xFF05)
-                v = read_tima(mem->timer);
-        else if (addr == 0xFF06)
-                v = read_tma(mem->timer);
-        else if (addr == 0xFF07)
-                /* v = mem->tac | 0xF8; */
-                v = read_tac(mem->timer);
+        else if (addr <= 0xFF07)
+                v = read_timer(mem->timer, addr);
         else if (addr < 0xFF0F)
                 invalid_read(addr);
         else if (addr == 0xFF0F)

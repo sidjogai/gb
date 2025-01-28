@@ -39,7 +39,7 @@ static void render_window(struct window *w)
         if (SDL_LockTexture(w->texture, NULL, (void **)&pixels, &pitch) < 0)
                 sdl_fail();
 
-        memcpy(pixels, w->buf, (size_t)(w->width * w->height) * sizeof(*w->buf));
+        memcpy(pixels, w->buf, (size_t)(w->width * w->height) * sizeof *w->buf);
 
         SDL_UnlockTexture(w->texture);
 
