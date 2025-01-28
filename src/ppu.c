@@ -55,6 +55,13 @@ enum lcdc_flag {
         LCD_ENABLE    = 1 << 7,
 };
 
+enum oam_attribute {
+        PALETTE  = 1 << 4,
+        X_FLIP   = 1 << 5,
+        Y_FLIP   = 1 << 6,
+        PRIORITY = 1 << 7,
+};
+
 static void set_vram_access(struct ppu *ppu, bool enabled)
 {
         ppu->vram_accessible = enabled;
@@ -344,8 +351,7 @@ static u8 get_obj_bitplane(struct ppu *ppu, u8 tile_id, u16 initial_offset)
 
         u8 y_bits = ppu->ly - (obj.y - 16);
 
-        /* vertical flip */
-        if ((obj.attributes >> 6) & 0x1)
+        if (obj.attributes & Y_FLIP)
                 y_bits = ~y_bits;
 
         initial_offset |= tile_id << 4;
@@ -356,8 +362,7 @@ static u8 get_obj_bitplane(struct ppu *ppu, u8 tile_id, u16 initial_offset)
 
         u8 bitplane = ppu->vram[initial_offset];
 
-        /* horizontal flip */
-        if ((obj.attributes >> 5) & 0x1)
+        if (obj.attributes & X_FLIP)
                 bitplane = reversed[bitplane];
 
         return bitplane;
@@ -368,8 +373,8 @@ static void load_bg_fifo(struct ppu *ppu)
         assert(ppu->bg_fifo.len == 0);
 
         for (int bit = 7; bit >= 0; bit--) {
-                u8 low     = (ppu->bg_fetcher.bitplane0 >> bit) & 0x1;
-                u8 high    = (ppu->bg_fetcher.bitplane1 >> bit) & 0x1;
+                u8 low  = (ppu->bg_fetcher.bitplane0 >> bit) & 0x1;
+                u8 high = (ppu->bg_fetcher.bitplane1 >> bit) & 0x1;
                 struct fifo_entry e = {
                         .color_id = (u8)(low | high << 1)
                 };
@@ -385,12 +390,12 @@ static void load_obj_fifo(struct ppu *ppu)
         for (int i, bit = 7; bit >= 0; bit--) {
                 i = 7 - bit;
                 if (fifo_peek_at(&ppu->obj_fifo, i)->color_id == 0) {
-                        u8 low     = (ppu->obj_fetcher.bitplane0 >> bit) & 0x1;
-                        u8 high    = (ppu->obj_fetcher.bitplane1 >> bit) & 0x1;
+                        u8 low  = (ppu->obj_fetcher.bitplane0 >> bit) & 0x1;
+                        u8 high = (ppu->obj_fetcher.bitplane1 >> bit) & 0x1;
                         struct fifo_entry e =  {
                                 .color_id = (u8)(low | high << 1),
-                                .palette  = (obj.attributes >> 4) & 0x1,
-                                .priority = (obj.attributes >> 7) & 0x1,
+                                .palette  = obj.attributes & PALETTE,
+                                .priority = obj.attributes & PRIORITY,
                         };
                         fifo_replace(&ppu->obj_fifo, i, e);
                 }
@@ -500,11 +505,13 @@ static void fetch_obj_tile_id_idle(struct ppu *ppu)
 static void fetch_obj_tile_id(struct ppu *ppu)
 {
         struct obj obj = ppu->obj_buf[ppu->obj_index];
-
         ppu->obj_fetcher.tile_id = obj.tile_index;
 
         if (ppu->lcdc & OBJ_SIZE) {
-                if (ppu->ly - (obj.y - 16) < 8)
+                bool low_tile = ppu->ly - (obj.y - 16) < 8;
+                bool y_flip   = obj.attributes & Y_FLIP;
+
+                if (low_tile ^ y_flip)
                         ppu->obj_fetcher.tile_id &= 0xFE;
                 else
                         ppu->obj_fetcher.tile_id |= 0x01;
