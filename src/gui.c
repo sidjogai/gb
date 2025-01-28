@@ -1,3 +1,16 @@
+struct window {
+        char *title;
+        int   width;
+        int   height;
+        int   scale;
+        u32  *buf;
+        bool  shown;
+
+        SDL_Renderer *renderer;
+        SDL_Texture  *texture;
+        SDL_Window   *window;
+};
+
 static noreturn void sdl_fail(void)
 {
         assert(0);
@@ -84,7 +97,9 @@ static bool window_focused(struct window *w)
 
 static u64 clock_ns(void)
 {
-        return clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW);
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (u64)ts.tv_sec * 1000000000ULL + ts.tv_nsec;
 }
 
 static void sleep_ns(u64 ns)

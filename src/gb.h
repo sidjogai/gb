@@ -206,6 +206,8 @@ struct ppu {
         } bg_fetcher, obj_fetcher;
         enum active_fetcher {BG_FETCHER, OBJ_FETCHER} active_fetcher;
 
+        bool finishing_bg_fetch;
+
         struct fifo {
                 struct fifo_entry {
                         u8 color;       /* 0-3; palette not applied */
@@ -298,30 +300,4 @@ static void load_rom(struct gameboy *gb, const char *filename);
 
 static void draw_bg_map(struct ppu *, u32 buf[]);
 static void draw_tile_data(struct ppu *, u32 buf[]);
-/* static void draw_info(int fps, u32 *buf, int w, int h, u32 *palette); */
 static void draw_info(int fps, u32 *buf, int w, int h, u32 *palette, struct gameboy *gb);
-
-/* ================================= gui.c ================================== */
-
-struct window {
-        char *title;
-        int   width;
-        int   height;
-        int   scale;
-        u32  *buf;
-        bool  shown;
-
-        SDL_Renderer *renderer;
-        SDL_Texture  *texture;
-        SDL_Window   *window;
-};
-
-static noreturn void sdl_fail(void);
-
-static void init_window(struct window *);
-static void render_window(struct window *);
-static void close_window(struct window *);
-static void toggle_window_shown(struct window *);
-
-static u64 clock_ns(void);
-static void sleep_ns(u64 ns);

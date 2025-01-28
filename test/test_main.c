@@ -66,26 +66,34 @@ static u8 external_ram[128 * 1024]; /* max external RAM */
 
 static u32 palette[]  = {0xFFFFFFFF, 0xFFB6B6B6, 0xFF676767, 0xFF000000};
 
-static void early_exit(struct cpu *cpu)
-{
-        bool inf_loop = read_mem(cpu->mem, cpu->regs.pc) == 0x18 /* jr */ &&
-                read_mem(cpu->mem, cpu->regs.pc + 1) == 0xFE; /* -2 */
+struct gameboy gb;
 
-        if (inf_loop) {
-                if (cpu->regs.b == 3 && cpu->regs.c == 5 &&
-                    cpu->regs.d == 8 && cpu->regs.e == 13 &&
-                    cpu->regs.h == 21 && cpu->regs.l == 34)
-                        exit(SUCCESS_CODE);
-                else
-                        exit(FAILURE_CODE);
+static void test_mooneye(struct cpu *cpu)
+{
+        u64 frame = 1;
+        FRAME = &frame;
+
+        for (;;) {
+                step_cpu(&gb.cpu);
+                /* jr -2 */
+                bool inf_loop = read_mem(cpu->mem, cpu->regs.pc) == 0x18&&
+                        read_mem(cpu->mem, cpu->regs.pc + 1) == 0xFE;
+
+                if (inf_loop) {
+                        if (cpu->regs.b == 3 && cpu->regs.c == 5 &&
+                            cpu->regs.d == 8 && cpu->regs.e == 13 &&
+                            cpu->regs.h == 21 && cpu->regs.l == 34)
+                                exit(SUCCESS_CODE);
+                        else
+                                exit(FAILURE_CODE);
+                }
         }
 }
 
 int main(int argc, char *argv[])
 {
         char *rom = argv[1];
-
-        struct gameboy gb;
+        
         init_gb(&gb, gb_buf, palette, external_ram, rom_buf);
         TICK = &gb.cpu.tick;
 
@@ -93,76 +101,8 @@ int main(int argc, char *argv[])
 
         load_rom(&gb, rom);
 
-        if (argc > 2 && strcmp(argv[2], "-q") == 0) {
-                for (;;) {
-                        /* for (int i = 0; i < (70224 / 4); i++) */
-                                step_cpu(&gb.cpu);
-                        early_exit(&gb.cpu);
-                }
-        }
+        if (argc > 2 && strcmp(argv[2], "--mooneye") == 0)
+                test_mooneye(&gb.cpu);
 
-        struct window gb_window = {
-                .title  = "gb",
-                .width  = 160,
-                .height = 144,
-                .scale  = 2,
-                .buf    = gb_buf,
-                .shown = true,
-        };
-
-        if (SDL_Init(SDL_INIT_VIDEO) < 0)
-                sdl_fail();
-        atexit(SDL_Quit);
-
-        init_window(&gb_window);
-
-
-
-        u64 frame;
-
-        frame = 1;
-
-#ifdef GB_PROFILE
-        u64 total_ns = 0;
-#endif
-
-        for (SDL_Event event; ; frame++) {
-                if (SDL_PollEvent(&event)) {
-                        switch (event.type) {
-                        case SDL_KEYDOWN:
-                                switch (event.key.keysym.sym) {
-                                case SDLK_ESCAPE:
-                                        exit(FAILURE_CODE);
-                                case SDLK_SPACE:;
-
-#ifdef GB_PROFILE
-                                        u64 avg_ns = total_ns / frame;
-                                        u64 avg_fps = 1000000000 / avg_ns;
-
-                                        printf("frames = %llu, avg fps = %llu\n",
-                                               frame, avg_fps);
-#endif
-                                        exit(SUCCESS_CODE);
-                                }
-                        }
-                }
-
-#ifdef GB_PROFILE
-                u64 frame_start = clock_ns();
-#endif
-
-                while(gb.cpu.tick <= frame * 70224)
-                        step_cpu(&gb.cpu);
-
-#ifdef GB_PROFILE
-                u64 delta = clock_ns() - frame_start;
-                total_ns += delta;
-                double ms = delta / 1E6;
-                u64 fps = 1000000000 / delta;
-                printf("frame %llu - %f ms (= %llu fps)\n", frame, ms, fps);
-#endif
-
-                render_window(&gb_window);
-        }
         return 0;
 }
