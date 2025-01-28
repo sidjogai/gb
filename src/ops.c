@@ -220,8 +220,8 @@ static void ld_r8_r8(struct cpu *cpu, enum reg dst, enum reg src)
 {
         u8 v = getreg8(cpu, src);
 
-        /* if (dst == REG_E && src == REG_B) */
-                /* printf("ld e, b = %d", v); */
+        /* if (dst == REG_B && src == REG_B) */
+        /*         printf("ld e, b = %d", v); */
 
         setreg8(cpu, dst, v);
 

@@ -30,6 +30,7 @@ typedef int      t_cycle;
 typedef int      dot;
 
 static u64 *TICK;
+static u64 *FRAME;
 
 #define SUCCESS_CODE 11
 #define FAILURE_CODE 13

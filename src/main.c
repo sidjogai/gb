@@ -34,6 +34,7 @@ typedef int      t_cycle;
 typedef int      dot;
 
 static u64 *TICK;
+static u64 *FRAME;
 
 #define len(a) ((int)(sizeof(a) / sizeof(*a)))
 
@@ -49,6 +50,7 @@ static u64 *TICK;
 #include "gb.h"
 
 #include "ppu.c"
+#include "ppu_mode3.c"
 #include "cpu.c"
 #include "debug.c"
 #include "init.c"
@@ -66,7 +68,7 @@ static u32 sprites_buf[(8 * 10) * (8 * 4)];
 static u32 tile_data_buf[(8 * 16 + 15) * (8 * 24 + 23)];
 static u32 info_buf[(8 * 20) *  (8 * 8)];
 
-static u8 rom_buf[8 * 1024 * 1024]; /* size of the largest gameboy ROM */
+static u8 rom_buf[8 * 1024 * 1024]; /* size of largest gameboy ROM */
 static u8 external_ram[128 * 1024]; /* max external RAM */
 
 static struct gameboy gb;
@@ -221,6 +223,7 @@ int main(int argc, char *argv[])
                         init_window(&windows[i]);
 
         u64 frame, start, elapsed;
+        FRAME = &frame;
 
  start:
         init_gb(&gb, gb_buf, palette, external_ram, rom_buf);
@@ -284,15 +287,6 @@ int main(int argc, char *argv[])
 
                 if (limit_fps && (elapsed = clock_ns() - start) < 16666667)
                         sleep_ns(16666667 - elapsed);
-
-                /* if (!donep && frame > 500) { */
-                /*         windows[GB].scale *= 2; */
-                /*         int w = windows[GB].width * windows[GB].scale; */
-                /*         int h = windows[GB].height * windows[GB].scale; */
-                /*         SDL_SetWindowSize(windows[GB].window, w, h); */
-                /*         donep = 1; */
-                /*         /\* goto done *\/ */
-                /* } */
         }
 
  done:

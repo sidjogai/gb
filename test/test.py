@@ -98,6 +98,58 @@ MOONEYE_TESTS = [
     "mooneye/emulator-only/mbc1/rom_8Mb.gb",
 ]
 
+WILBERTPOL_TESTS = [
+    "wilbertpol/gpu/hblank_ly_scx_timing-C.gb",
+    "wilbertpol/gpu/hblank_ly_scx_timing_nops.gb",
+    "wilbertpol/gpu/hblank_ly_scx_timing_variant_nops.gb",
+    "wilbertpol/gpu/intr_0_timing.gb",
+    "wilbertpol/gpu/intr_1_timing.gb",
+    "wilbertpol/gpu/intr_2_mode0_scx1_timing_nops.gb",
+    "wilbertpol/gpu/intr_2_mode0_scx2_timing_nops.gb",
+    "wilbertpol/gpu/intr_2_mode0_scx3_timing_nops.gb",
+    "wilbertpol/gpu/intr_2_mode0_scx4_timing_nops.gb",
+    "wilbertpol/gpu/intr_2_mode0_scx5_timing_nops.gb",
+    "wilbertpol/gpu/intr_2_mode0_scx6_timing_nops.gb",
+    "wilbertpol/gpu/intr_2_mode0_scx7_timing_nops.gb",
+    "wilbertpol/gpu/intr_2_mode0_scx8_timing_nops.gb",
+    "wilbertpol/gpu/intr_2_mode0_timing_sprites_nops.gb",
+    "wilbertpol/gpu/intr_2_mode0_timing_sprites_scx1_nops.gb",
+    "wilbertpol/gpu/intr_2_mode0_timing_sprites_scx2_nops.gb",
+    "wilbertpol/gpu/intr_2_mode0_timing_sprites_scx3_nops.gb",
+    "wilbertpol/gpu/intr_2_mode0_timing_sprites_scx4_nops.gb",
+    "wilbertpol/gpu/intr_2_timing.gb",
+    "wilbertpol/gpu/lcdon_mode_timing.gb",
+    "wilbertpol/gpu/ly00_01_mode0_2.gb",
+    "wilbertpol/gpu/ly00_mode0_2-GS.gb",
+    "wilbertpol/gpu/ly00_mode1_0-GS.gb",
+    "wilbertpol/gpu/ly00_mode1_2-C.gb",
+    "wilbertpol/gpu/ly00_mode2_3.gb",
+    "wilbertpol/gpu/ly00_mode3_0.gb",
+    "wilbertpol/gpu/ly143_144_145.gb",
+    "wilbertpol/gpu/ly143_144_152_153.gb",
+    "wilbertpol/gpu/ly143_144_mode0_1.gb",
+    "wilbertpol/gpu/ly143_144_mode3_0.gb",
+    "wilbertpol/gpu/ly_lyc-C.gb",
+    "wilbertpol/gpu/ly_lyc-GS.gb",
+    "wilbertpol/gpu/ly_lyc_0-C.gb",
+    "wilbertpol/gpu/ly_lyc_0-GS.gb",
+    "wilbertpol/gpu/ly_lyc_0_write-C.gb",
+    "wilbertpol/gpu/ly_lyc_0_write-GS.gb",
+    "wilbertpol/gpu/ly_lyc_144-C.gb",
+    "wilbertpol/gpu/ly_lyc_144-GS.gb",
+    "wilbertpol/gpu/ly_lyc_153-C.gb",
+    "wilbertpol/gpu/ly_lyc_153-GS.gb",
+    "wilbertpol/gpu/ly_lyc_153_write-C.gb",
+    "wilbertpol/gpu/ly_lyc_153_write-GS.gb",
+    "wilbertpol/gpu/ly_lyc_write-C.gb",
+    "wilbertpol/gpu/ly_lyc_write-GS.gb",
+    "wilbertpol/gpu/ly_new_frame-C.gb",
+    "wilbertpol/gpu/ly_new_frame-GS.gb",
+    "wilbertpol/gpu/stat_write_if-C.gb",
+    "wilbertpol/gpu/stat_write_if-GS.gb",
+    "wilbertpol/gpu/vblank_if_timing.gb"
+]
+
 def extract_url(url, dst):
     with tempfile.NamedTemporaryFile() as tar_file:
         urllib.request.urlretrieve(url, tar_file.name)
@@ -151,7 +203,8 @@ def main():
         return
 
     search = sys.argv[1] if len(sys.argv) > 1 else ""
-    tests  = [test for test in BLARGG_TESTS + MOONEYE_TESTS if search in test]
+    all_tests = BLARGG_TESTS + MOONEYE_TESTS + WILBERTPOL_TESTS
+    tests  = [test for test in all_tests if search in test]
 
     compile("make")
     quiet = len(sys.argv) > 2 and sys.argv[2] == "-q"

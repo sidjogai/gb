@@ -186,7 +186,9 @@ struct ppu {
         bool pixel_counter_enabled;
 
         bool prev_stat_line;
-        u8 prev_stat_ly; /* TODO: get rid of this */
+
+        /* ppu is disabled if bit 7 of LCDC is set */
+        bool disabled;
 
         struct fetcher {
                 u8 tile_id;
