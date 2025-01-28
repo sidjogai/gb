@@ -33,6 +33,8 @@ typedef int      m_cycle;
 typedef int      t_cycle;
 typedef int      dot;
 
+static u64 *TICK;
+
 #define len(a) ((int)(sizeof(a) / sizeof(*a)))
 
 #define assert(expr) SDL_assert(expr)
@@ -67,7 +69,7 @@ static u32 info_buf[(8 * 20) *  (8 * 8)];
 
 static u8 rom_buf[8 * 1024 * 1024]; /* size of the largest gameboy ROM */
 static u8 external_ram[128 * 1024]; /* max external RAM */
-        
+
 int main(int argc, char *argv[])
 {
         char *bootrom               = NULL;
@@ -77,13 +79,13 @@ int main(int argc, char *argv[])
         u32  *palette               = palettes[0];
 
         (void)bootrom;
-        
-        
+
+
         for (int opt; (opt = getopt(argc, argv, "b:p:s:dF")) != -1; )
                 switch (opt)  {
                 case 'b':
                         bootrom = optarg;
-                        break; 
+                        break;
                 case 'p':
                         if (optarg[0] >= '1' && optarg[0] <= '9')
                                 if (optarg[0] - '0' <= len(palettes))
@@ -165,10 +167,9 @@ int main(int argc, char *argv[])
 
  start:
         init_gb(&gb, gb_buf, palette, external_ram, rom_buf);
+        TICK = &gb.cpu.tick;
 
-        /* if (bootrom) */
-        /*         load_bootrom(&gb, bootrom); */
-        /* else */
+
         skip_bootrom(&gb);
 
         load_rom(&gb, rom);

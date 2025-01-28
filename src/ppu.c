@@ -396,7 +396,7 @@ static struct obj * sprite_hit(struct ppu *ppu)
                                 obj->seen = true;
                                 /* printf("obj with x=%d, y=%d not seen, adding!\n",  */
                                 /*        obj->x, obj->y); */
-
+                                Q;
                                 return obj;
                         } else {
                                 /* printf("skipping obj with x=%d, y=%d as it is seen\n",  */
@@ -410,7 +410,7 @@ static struct obj * sprite_hit(struct ppu *ppu)
         for (int i = 0; i < n; i++) {                                   \
                 clock_fifos(ppu);                                       \
                 if ((ppu->cur_obj = sprite_hit(ppu)) != NULL)           \
-                        ppu->new.obj_fetch_underway = true;          \
+                        ppu->new.obj_fetch_underway = true;             \
                 if (ppu->lx >= 160)                                     \
                         goto hblank;                                    \
         }
@@ -596,132 +596,86 @@ static u8 read_oam(struct ppu *ppu, u16 addr)
         return ppu->oam[addr - OAM_START];
 }
 
-static void write_lcdc(struct ppu *ppu, u8 v)
+static void write_ppu_reg(struct ppu *ppu, u8 v, u16 addr)
 {
-        ppu->lcdc = v;
+        switch(addr) {
+        case LCDC_ADDR:
+                ppu->lcdc = v;
+                break;
+        case STAT_ADDR:
+                ppu->stat = (v & ~0x7) | (ppu->stat & 0x7);
+                break;
+        case SCY_ADDR:
+                ppu->scy = v;
+                break;
+        case SCX_ADDR:
+                if (v != 0)
+                        Q;
+                ppu->scx = v;
+                break;
+        case LY_ADDR:
+                ppu->ly = v;
+                break;
+        case LYC_ADDR:
+                ppu->lyc = v;
+                break;
+        case DMA_ADDR:
+                if (v > 0xDF)
+                        die("TODO: check what to do here\n");
+
+                ppu->dma.in_progress = true;
+                ppu->dma.delta       = 0;
+                ppu->dma.val         = v;
+                break;
+        case BGP_ADDR:
+                ppu->bgp = v;
+                break;
+        case OBP0_ADDR:
+                ppu->obp0 = v;
+                break;
+        case OBP1_ADDR:
+                ppu->obp1 = v;
+                break;
+        case WX_ADDR:
+                if (v == 0 || v == 166)
+                        die("write_wx: set to unreliable value %d\n", v);
+                ppu->wx = v;
+                break;
+        case WY_ADDR:
+                ppu->wy = v;
+                break;
+        }
 }
 
-static u8 read_lcdc(struct ppu *ppu)
+static u8 read_ppu_reg(struct ppu *ppu, u16 addr)
 {
-        return ppu->lcdc;
-}
+        switch(addr) {
+        case LCDC_ADDR:
+                return ppu->lcdc;
+        case STAT_ADDR:
+                return ppu->stat;
+        case SCY_ADDR:
+                return ppu->scy;
+        case SCX_ADDR:
+                return ppu->scx;
+        case LY_ADDR:
+                return ppu->ly;
+        case LYC_ADDR:
+                return ppu->lyc;
+        case DMA_ADDR:
+                return ppu->dma.val;
+        case BGP_ADDR:
+                return ppu->bgp;
+        case OBP0_ADDR:
+                return ppu->obp0;
+        case OBP1_ADDR:
+                return ppu->obp1;
+        case WX_ADDR:
+                return ppu->wx;
+        case WY_ADDR:
+                return ppu->wy;
+        }
 
-static void write_stat(struct ppu *ppu, u8 v)
-{
-        ppu->stat = (v & ~0x7) | (ppu->stat & 0x7);
-}
-
-static u8 read_stat(struct ppu *ppu)
-{
-        return ppu->stat;
-}
-
-static void write_scy(struct ppu *ppu, u8 v)
-{
-        ppu->scy = v;
-}
-
-static u8 read_scy(struct ppu *ppu)
-{
-        return ppu->scy;
-}
-
-static void write_scx(struct ppu *ppu, u8 v)
-{
-        if (v != 0)
-                Q;
-        ppu->scx = v;
-}
-
-static u8 read_scx(struct ppu *ppu)
-{
-        return ppu->scx;
-}
-
-static void write_ly(struct ppu *ppu, u8 v)
-{
-        /* LY is read-only */
-}
-
-static u8 read_ly(struct ppu *ppu)
-{
-        return ppu->ly;
-}
-
-static void write_lyc(struct ppu *ppu, u8 v)
-{
-        /* Q; */
-        ppu->lyc = v;
-}
-
-static u8 read_lyc(struct ppu *ppu)
-{
-        /* Q; */
-        return ppu->lyc;
-}
-
-static void write_wy(struct ppu *ppu, u8 v)
-{
-        ppu->wy = v;
-}
-
-static u8 read_wy(struct ppu *ppu)
-{
-        return ppu->wy;
-}
-
-static void write_wx(struct ppu *ppu, u8 v)
-{
-        if (v == 0 || v == 166)
-                die("write_wx: set to unreliable value %d\n", v);
-        ppu->wx = v;
-}
-
-static u8 read_wx(struct ppu *ppu)
-{
-        return ppu->wx;
-}
-
-static void write_dma(struct ppu *ppu, u8 v)
-{
-        if (v > 0xDF)
-                die("TODO: check what to do here\n");
-
-        ppu->dma.in_progress = true;
-        ppu->dma.delta       = 0;
-        ppu->dma.val         = v;
-}
-
-static u8 read_dma(struct ppu *ppu)
-{
-        return ppu->dma.val;
-}
-
-static void write_bgp(struct ppu *ppu, u8 v)
-{
-        ppu->bgp = v;
-}
-
-static u8 read_bgp(struct ppu *ppu)
-{
-        return ppu->bgp;
-}
-
-static void write_obp0(struct ppu *ppu, u8 v)
-{
-        ppu->obp0 = v;
-}
-
-static u8 read_obp0(struct ppu *ppu)
-{
-        return ppu->obp0;
-}
-static void write_obp1(struct ppu *ppu, u8 v)
-{
-        ppu->obp1 = v;
-}
-
-static u8 read_obp1(struct ppu *ppu)
-{
-        return ppu->obp1;
+        assert(false);
+        return 0;
 }

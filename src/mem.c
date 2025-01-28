@@ -45,26 +45,8 @@ static void write_mem(struct mem *mem, u8 v, u16 addr)
                 invalid_write(v, addr);
         else if (addr <= 0xFF3F)
                 ; /* TODO: wave pattern */
-        else if (addr == 0xFF40)
-                write_lcdc(mem->ppu, v);
-        else if (addr == 0xFF41)
-                write_stat(mem->ppu, v);
-        else if (addr == 0xFF42)
-                write_scy(mem->ppu, v);
-        else if (addr == 0xFF43)
-                write_scx(mem->ppu, v);
-        else if (addr == 0xFF44)
-                write_ly(mem->ppu, v);
-        else if (addr == 0xFF45)
-                write_lyc(mem->ppu, v);
-        else if (addr == 0xFF46)
-                write_dma(mem->ppu, v);
-        else if (addr == 0xFF47)
-                write_bgp(mem->ppu, v);
-        else if (addr == 0xFF48)
-                write_obp0(mem->ppu, v);
-        else if (addr == 0xFF49)
-                write_obp1(mem->ppu, v);
+        else if (addr <= 0xFF49)
+                write_ppu_reg(mem->ppu, v, addr);
         else if (addr == 0xFF50)
                 mem->bootrom_disabled = v;
         else if (addr <= 0xFF4B)
@@ -125,26 +107,8 @@ static u8 read_mem(struct mem *mem, u16 addr)
                 invalid_read(addr);
         else if (addr <= 0xFF3F)
                 ; // TODO wave pattern
-        else if (addr == 0xFF40)
-                v = read_lcdc(mem->ppu);
-        else if (addr == 0xFF41)
-                v = read_stat(mem->ppu);
-        else if (addr == 0xFF42)
-                v = read_scy(mem->ppu);
-        else if (addr == 0xFF43)
-                v = read_scx(mem->ppu);
-        else if (addr == 0xFF44)
-                v = read_ly(mem->ppu);
-        else if (addr == 0xFF45)
-                v = read_lyc(mem->ppu);
-        else if (addr == 0xFF46)
-                v = read_dma(mem->ppu);
-        else if (addr == 0xFF47)
-                v = read_bgp(mem->ppu);
-        else if (addr == 0xFF48)
-                v = read_obp0(mem->ppu);
-        else if (addr == 0xFF49)
-                v = read_obp1(mem->ppu);
+        else if (addr <= 0xFF49)
+                v = read_ppu_reg(mem->ppu, addr);
         else if (addr == 0xFF50)
                 v = mem->bootrom_disabled;
         else if (addr <= 0xFF4B)

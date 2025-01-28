@@ -29,6 +29,8 @@ enum addr {
         BGP_ADDR        = 0xFF47,
         OBP0_ADDR       = 0xFF48,
         OBP1_ADDR       = 0xFF49,
+        WY_ADDR         = 0xFF4A,
+        WX_ADDR         = 0xFF4B,
         IOREG_END       = 0xFF7F,
         HRAM_START      = 0xFF80,
         HRAM_END        = 0xFFFE,
@@ -56,7 +58,7 @@ struct mem {
 
         u8  bootrom_disabled;   /* FF50 */
         u8 *bootrom;
-        
+
         struct timer  *timer;
         struct ppu    *ppu;
         struct joypad *joypad;
@@ -64,8 +66,8 @@ struct mem {
 
 };
 
-static void write_mem(struct mem *, u8 v, u16 addr);
-static u8 read_mem(struct mem *mem, u16 addr);
+static void write_mem(struct mem *, u8, u16);
+static u8 read_mem(struct mem *, u16);
 
 /* ================================= mbc.c ================================== */
 
@@ -73,7 +75,7 @@ struct mbc {
         enum mbc_type { NO_MBC, MBC1 } type;
         int rom_banks;          /* number of 16KiB ROM banks */
         int ram_banks;          /* number of 8KiB RAM banks */
-        
+
         /* int  rom_banks;    /\* number of 16KiB rom banks *\/ */
         int  ram_size;  /* external ram size / 1 KiB */
         u8 *rom;
@@ -83,7 +85,7 @@ struct mbc {
 
 
         struct mbc1 {
-                u8 ram_enabled; /* set if 0xA written to 0000-1FFF */ 
+                u8 ram_enabled; /* set if 0xA written to 0000-1FFF */
                 u8 bank1;       /* 2000-3FFF - BANK1: MBC1 bank register 1  */
                 u8 bank2;       /* 4000-5FFF - BANK2: MBC1 bank register 2  */
                 u8 mode;        /* 6000-7FFF - MODE: MBC1 mode register */
@@ -91,10 +93,10 @@ struct mbc {
 };
 
 
-static u8   read_external_ram(struct mbc *mbc, u16);
-static u8   read_rom(struct mbc *mbc, u16);
-static void write_external_ram(struct mbc *mbc, u8 v, u16);
-static void write_rom(struct mbc *mbc, u8, u16);
+static u8   read_external_ram(struct mbc *, u16);
+static u8   read_rom(struct mbc *, u16);
+static void write_external_ram(struct mbc *, u8, u16);
+static void write_rom(struct mbc *, u8, u16);
 
 /* ================================ timer.c ================================= */
 
@@ -183,6 +185,13 @@ struct ppu {
         u32  palette[4];        /* light to dark; ARGB8888 format */
         u32 *display_buf;       /* user-facing display; ARGB8888 format */
 
+        struct nl {
+                fetcher cur_fetcher;
+                u8 fetch_count; /* fetch counter (0 - 5) */
+                u8 shift_count; /* fifo shift counter (0 - 7) */
+                u8 pixel_count; /* pixel counter (0 - 167) */
+        } nl;
+
         struct new {
                 int pixelcount;
                 int nfetch; /* times a tile fetch occured; debugging only */
@@ -246,45 +255,16 @@ struct ppu {
         int nslots;
 };
 
-static void sync_ppu(struct ppu *ppu, u8 *interrupt_flag);
+static void sync_ppu(struct ppu *, u8 *interrupt_flag);
 
-static void write_vram(struct ppu *, u8, u16 addr);
-static u8   read_vram(struct ppu *, u16 addr);
+static void write_vram(struct ppu *, u8, u16);
+static u8   read_vram(struct ppu *, u16);
 
-static void write_oam(struct ppu *, u8, u16 addr);
-static u8   read_oam(struct ppu *, u16 addr);
+static void write_oam(struct ppu *, u8, u16);
+static u8   read_oam(struct ppu *, u16);
 
-static void write_lcdc(struct ppu *, u8);
-static u8   read_lcdc(struct ppu *);
-
-static void write_stat(struct ppu *, u8);
-static u8   read_stat(struct ppu *);
-
-static void write_scy(struct ppu *, u8);
-static u8   read_scy(struct ppu *);
-
-static void write_scx(struct ppu *, u8);
-static u8   read_scx(struct ppu *);
-
-static void write_ly(struct ppu *, u8);
-static u8   read_ly(struct ppu *);
-
-static void write_lyc(struct ppu *, u8);
-static u8   read_lyc(struct ppu *);
-
-static void write_bgp(struct ppu *, u8);
-static u8   read_bgp(struct ppu *);
-
-static void write_dma(struct ppu *ppu, u8 v);
-static u8   read_dma(struct ppu *);
-
-static void write_wy(struct ppu *, u8);
-static u8   read_wy(struct ppu *);
-
-static void write_wx(struct ppu *, u8);
-static u8   read_wx(struct ppu *);
-
-static u8 * get_tile(struct ppu *ppu, u8 i); /* debug.c */
+static u8   read_ppu_reg(struct ppu *, u16);
+static void write_ppu_reg(struct ppu *, u8 v, u16);
 
 /* ================================ joypad.c ================================ */
 

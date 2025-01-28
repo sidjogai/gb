@@ -204,20 +204,7 @@ static void ld_r8_r8(struct cpu *cpu, enum reg dst, enum reg src)
 
         setreg8(cpu, dst, v);
 
-        /* if (dst == REG_D && src == REG_A) */
-        /*         puts("ld D A"); */
-
-        /* if (dst == REG_E && src == REG_A) */
-        /*         puts("ld E A"); */
-
-        /* if (dst == REG_C && src == REG_A) */
-        /*         puts("ld C A"); */
-
-        /* if (dst == REG_L && src == REG_A) */
-        /*         puts("ld L A"); */
-
         TRACE("ld %s, %s", reg_name(dst), reg_name(src));
-
 }
 
 /* ld r8, imm8: 2 bytes, 8 cycles */
