@@ -37,6 +37,23 @@ static u64 *FRAME;
 #define TIMEOUT_CODE 15
 #define ASSERT_FAILURE_CODE 15
 
+#define PPU_LOGGING_ENABLED 0
+
+#define LOG_PPU_LYC_WRITE   0
+#define LOG_PPU_BGP_WRITE   0
+#define LOG_PPU_STAT_WRITE  0
+#define LOG_PPU_LCDC_WRITE  0
+#define LOG_PPU_VBLANK_IRQ  0
+#define LOG_PPU_STAT_IRQ    0
+#define LOG_PPU_MODE_SWITCH 0
+#define LOG_PPU_OAM_ACCESS  0
+#define LOG_PPU_VRAM_ACCESS 0
+#define LOG_PPU_LCD_TOGGLE  0
+
+#define TRACE_CPU 0
+
+#define LOG_CPU_EI_DI 0
+
 #define len(a) ((int)(sizeof(a) / sizeof(*a)))
 
 #define assert(expr) do { if(!(expr)) exit(ASSERT_FAILURE_CODE); } while (0)

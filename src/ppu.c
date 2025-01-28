@@ -1,21 +1,53 @@
-#define pf(...) do {printf("tick = %ld; dot = %d;", *TICK, ppu->dots_since_scanline_started);            \
-                    printf(__VA_ARGS__); putchar('\n');}  while (0)
+#define log_event(event, ...)                                           \
+        do {                                                            \
+                if (PPU_LOGGING_ENABLED && LOG_PPU_##event) {           \
+                        printf("frame = %3d, "                          \
+                               "mode = %d, "                            \
+                               "ly = %3d, "                             \
+                               "lx = %3d, "                             \
+                               "dot = %3d "                             \
+                               "[%s]    \t",                            \
+                               ppu->frame,                              \
+                               ppu->mode,                               \
+                               ppu->ly,                                 \
+                               ppu->lx,                                 \
+                               ppu->dots_since_scanline_started,        \
+                               #event);                                 \
+                        printf(__VA_ARGS__);                            \
+                        putchar('\n');                                  \
+                }                                                       \
+        } while (0)
+
+static void set_vram_access(struct ppu *ppu, bool enabled)
+{
+        ppu->vram_accessible = enabled;
+        log_event(VRAM_ACCESS, "%s", enabled ? "enabled" : "disabled");
+}
+
+static void set_oam_access(struct ppu *ppu, bool enabled)
+{
+        ppu->oam_accessible = enabled;
+        log_event(OAM_ACCESS, "%s", enabled ? "enabled" : "disabled");
+}
+
+static void update_coincidence_flag(struct ppu *ppu)
+{
+        if (read_ppu_reg(ppu, LY_ADDR) == ppu->lyc)
+                ppu->stat |= (1 << 2);
+        else
+                ppu->stat &= ~(1 << 2);
+}
 
 static void switch_to_mode(struct ppu *ppu, enum ppu_mode m)
 {
-        /* pf("switched to mode %d now", m); */
+        log_event(MODE_SWITCH, "switched from mode %d to %d", m, ppu->mode);
         ppu->mode = m;
         ppu->stat &= ~0x7;
         ppu->stat |= ppu->mode;
+        u8 old = ppu->stat;
+        update_coincidence_flag(ppu);
 }
 
-static void update_mode(struct ppu *ppu)
-{
-        ppu->stat &= ~0x7;
-        ppu->stat |= ppu->mode;
-}
-
-static void step_dot(struct ppu *ppu, u8 *interrupt_flag);
 
 static void oam_dma(struct ppu *ppu);
 
@@ -24,10 +56,20 @@ static void new_drawing(struct ppu *ppu);
 static void new_hblank(struct ppu *ppu, u8 *interrupt_flag);
 static void new_vblank(struct ppu *ppu);
 
-static bool stat_interrupt_pending(struct ppu *ppu, u8 *interrupt_flag);
+static bool check_stat(struct ppu *ppu, u8 *interrupt_flag);
 
 static void tick_ppu(struct ppu *ppu, u8 *interrupt_flag)
 {
+        if (!(ppu->lcdc >> 7)) {
+                ppu->ly = 0;
+                ppu->stat &= ~0x3;
+                ppu->dots_since_scanline_started = 0;
+                ppu->dots_since_frame_started = 0;
+                ppu->vram_accessible = true;
+                ppu->oam_accessible = true;
+                return;
+        }
+
         switch (ppu->mode) {
         case OAM_SCAN:
                 assert(ppu->dots_since_scanline_started < 80); /* unless weird one */
@@ -45,28 +87,62 @@ static void tick_ppu(struct ppu *ppu, u8 *interrupt_flag)
                 break;
         }
 
-        if (stat_interrupt_pending(ppu, interrupt_flag)) {
-                *interrupt_flag |= 1 << 1;
-        }
+        /* printf("mode is %d dss is %d\n", ppu->mode, ppu->dots_since_scanline_started); */
+
+        update_coincidence_flag(ppu);
+
+        check_stat(ppu, interrupt_flag);
+
 
         ppu->dots_since_scanline_started++;
         ppu->dots_since_frame_started++;
 }
 
 
+static void init_new_scanline(struct ppu *ppu)
+{
+
+        ppu->active_fetcher = BG_FETCHER;
+        ppu->initial_fetch_completed = false;
+        ppu->scx_pixels_dropped = false;
+        ppu->initial_delay = 0;
+        memset(&ppu->obj_fifo, 0, sizeof ppu->obj_fifo);
+        memset(&ppu->bg_fifo, 0, sizeof ppu->bg_fifo);
+        memset(&ppu->obj_fetcher, 0, sizeof ppu->obj_fetcher);
+        memset(&ppu->bg_fetcher, 0, sizeof ppu->bg_fetcher);
+
+        set_vram_access(ppu, false);
+
+        ppu->shift_count = 0;
+        ppu->pixel_count = 0;
+        ppu->lx = 0;
+
+        /* as dots_since_scanline_started++ at the end of tick_ppu() */
+        ppu->dots_since_scanline_started = -1;
+}
+
 static void new_hblank(struct ppu *ppu, u8 *interrupt_flag)
 {
         /* TODO: weird ly stuff */
         if (ppu->dots_since_scanline_started == 455) {
+                init_new_scanline(ppu);
+
+                check_stat(ppu, interrupt_flag);
+                update_coincidence_flag(ppu);
+                check_stat(ppu, interrupt_flag);
+
                 /* pf("here"); */
                 ppu->ly++;
+
                 if (ppu->ly == 144) {
                         switch_to_mode(ppu, VBLANK);
-                        *interrupt_flag |= (1 << 1);
+                        log_event(VBLANK_IRQ, "irq");
+                        *interrupt_flag |= (1 << 0);
+                        /* printf("Vblank interrupt\n"); */
                 } else {
                         switch_to_mode(ppu, OAM_SCAN);
                 }
-                ppu->dots_since_scanline_started = -1;
+
         }
 }
 
@@ -76,12 +152,17 @@ static void new_vblank(struct ppu *ppu)
                 ppu->ly++;
                 if (ppu->ly == 154) {
                         ppu->ly = 0;
+                        ppu->lx = 0;
+                        init_new_scanline(ppu);
                         switch_to_mode(ppu, OAM_SCAN);
+                        set_oam_access(ppu, false);
                         assert(ppu->dots_since_frame_started == 70223);
+                        ppu->frame++;
                         ppu->dots_since_frame_started = -1;
                 } else {
                         /* nothing */
                 }
+                update_coincidence_flag(ppu);
                 ppu->dots_since_scanline_started = -1;
         }
 }
@@ -97,22 +178,6 @@ static void new_oam_scan(struct ppu *ppu)
                 return;
 
         if (ppu->dots_since_scanline_started == 79) {
-                ppu->pixel_counter_enabled = false;
-                ppu->shift_counter_enabled = false;
-                ppu->shift_count = 0;
-                ppu->pixel_count = 0;
-                ppu->lx = 0;
-                /* printf("Reset lx!\n"); */
-
-                ppu->active_fetcher = BG_FETCHER;
-                ppu->initial_fetch_completed = false;
-                ppu->scx_pixels_dropped = false;
-                ppu->initial_delay = 0;
-                memset(&ppu->obj_fifo, 0, sizeof ppu->obj_fifo);
-                memset(&ppu->bg_fifo, 0, sizeof ppu->bg_fifo);
-                memset(&ppu->obj_fetcher, 0, sizeof ppu->obj_fetcher);
-                memset(&ppu->bg_fetcher, 0, sizeof ppu->bg_fetcher);
-
                 switch_to_mode(ppu, DRAWING);
         }
 }
@@ -126,7 +191,6 @@ static void vblank(struct ppu *ppu, u8 *interrupt_flag);
 static void drawing(struct ppu *ppu, u8 *interrupt_flag);
 
 static void oam_dma(struct ppu *ppu);
-
 
 static struct fifo_entry pop_fifo(struct fifo *fifo)
 {
@@ -212,27 +276,42 @@ static void tick_drawing(struct ppu *ppu, u8 *interrupt_flag);
 static void new_drawing(struct ppu *ppu)
 {
         assert(ppu->active_fetcher == BG_FETCHER);
+        /* printf("dots are %d lx is %d\n", ppu->dots_since_scanline_started, ppu->lx); */
 
         if (ppu->initial_fetch_completed) {
+                /* puts("here!"); */
                 assert(ppu->dots_since_scanline_started >= 86);
 
                 struct fifo_entry bg = pop_fifo(&ppu->bg_fifo);
 
+                /* printf("pixels dropped %d\n", ppu->scx_pixels_dropped); */
+
                 if (!ppu->scx_pixels_dropped &&
                     ppu->shift_count >= (ppu->scx & 0x7))
                         ppu->scx_pixels_dropped = true;
+                else
+                          ppu->shift_count++;
 
                 /* fine horizontal scrolling */
                 if (ppu->scx_pixels_dropped) {
+                        /* printf("there!"); */
                         /* actually push to the LCD */
                         if (ppu->pixel_count >= 8) {
-                                u8 color = (ppu->lcdc & 0x1) ? bg.color : 0;
+                                u8 color = (ppu->bgp >> (bg.color * 2)) & 0x3;
+                                if ((ppu->lcdc & 0x1) == 0)
+                                        color = 0;
 
                                 /* color = ppu->dots_since_scanline_started % 2; */
                                 u32 gui_color = ppu->palette[color];
                                 int pos = ppu->ly * 160 + ppu->lx;
                                 ppu->display_buf[pos] = gui_color;
                                 if (++ppu->lx == 160) {
+                                        /* printf("switched to hblank on dot %d, btw stat is %d\n", */
+                                        /*        ppu->dots_since_scanline_started, ppu->stat); */
+                                        set_vram_access(ppu, true);
+                                        set_oam_access(ppu, true);
+
+
                                         switch_to_mode(ppu, HBLANK);
                                         return;
                                 }
@@ -283,53 +362,29 @@ static void new_drawing(struct ppu *ppu)
         }
 }
 
-static bool vram_accessible(enum ppu_mode m)
-{
-        return true; /* TODO */
-        /* return false; */
-        /* return m != DRAWING; */
-}
-
+/* NOTE: for now, don't implement VRAM blocking */
 static void write_vram(struct ppu *ppu, u8 v, u16 addr)
 {
-        /* if (vram_accessible(ppu->mode)) */
+        ppu->vram[addr - VRAM_START] = v; /* NOTE! */
+        if (ppu->vram_accessible)
                 ppu->vram[addr - VRAM_START] = v;
 }
 
 static u8 read_vram(struct ppu *ppu, u16 addr)
 {
-        /* if (!vram_accessible(ppu->mode)) */
-                /* return 0xFF; /\* garbage read *\/ */
-        return ppu->vram[addr - VRAM_START];
-}
-
-static bool oam_accessible(struct ppu *ppu)
-{
-        if (ppu->oam_access_blocked)
-                return false;
-        /* if (ppu->cycles_since_dma_initiated <= 161) */
-        /*         return false; */
-        /* return true; /\* TODO *\/ */
-        /* return m == HBLANK || m == VBLANK; */
-        return true;
+        return ppu->vram[addr - VRAM_START]; /* NOTE! */
+        return ppu->vram_accessible ? ppu->vram[addr - VRAM_START] : 0xFF;
 }
 
 static void write_oam(struct ppu *ppu, u8 v, u16 addr)
 {
-        /* printf("OAM: wrote %d to $%x on %llx\n", v, addr, *TICK); */
-        if (oam_accessible(ppu))
+        if (ppu->oam_accessible)
                 ppu->oam[addr - OAM_START] = v;
 }
 
 static u8 read_oam(struct ppu *ppu, u16 addr)
 {
-        u8 v = oam_accessible(ppu) ? ppu->oam[addr - OAM_START] : 0xFF;
-        /* if (oam_accessible(ppu)) { */
-        /* } else { */
-        /*         /\* if (ppu->lcd_reenabled) *\/ */
-        /*         /\*         return ppu->oam[addr - OAM_START]; *\/ */
-        /* } */
-        return v;
+        return ppu->oam_accessible ? ppu->oam[addr - OAM_START] : 0xFF;
 }
 
 static void oam_dma(struct ppu *ppu)
@@ -345,7 +400,7 @@ static void oam_dma(struct ppu *ppu)
                 } else {
                         ppu->cycles_since_dma_requested++;
                         if (ppu->cycles_since_dma_requested == 2)
-                                ppu->oam_access_blocked = true;
+                                set_oam_access(ppu, false);
                         if (!ppu->dma_in_progress)
                                 return;
                 }
@@ -356,86 +411,89 @@ static void oam_dma(struct ppu *ppu)
         u16 addr = (ppu->dma << 8) + ppu->dma_offset;
         ppu->oam[ppu->dma_offset++] = read_mem(ppu->mem, addr);
 
-        if (ppu->dma_offset == 160)
-                ppu->dma_in_progress = ppu->oam_access_blocked = false;
+        if (ppu->dma_offset == 160) {
+                ppu->dma_in_progress = false;
+                set_oam_access(ppu, true);
+        }
 }
 
-static bool stat_interrupt_pending(struct ppu *ppu, u8 *interrupt_flag)
+static bool check_stat(struct ppu *ppu, u8 *interrupt_flag)
 {
         bool stat_line = false;
-        int statbit=0;
-        char *reason = "none";
+        int bit=0;
+
         if (read_ppu_reg(ppu, LY_ADDR) == ppu->lyc && (ppu->stat & (1 << 6))) {
-                statbit = 6;
-                reason = "lyc";
-                /* assert(ppu->ly != ppu->prev_stat_ly); */
-                /* printf("fired interrupt for bit %d of stat %d\n", 6, *TICK); */
+                bit = 6;
                 stat_line = true;
         } else if (ppu->mode == 2 && (ppu->stat & (1 << 5))) {
-                statbit = 5;
-                reason = "mode2";
-
+                bit = 5;
                 stat_line = true;
         } else if (ppu->mode == 1 && (ppu->stat & (1 << 4))) {
-                statbit = 4;
-                reason = "mode1";
-                /* printf("fired interrupt for bit %d of stat %d\n", 4, *TICK); */
+                bit = 4;
                 stat_line = true;
         } else if (ppu->mode == 0 && (ppu->stat & (1 << 3))) {
-                reason = "mode0";
-                statbit = 1;
-                /* printf("fired interrupt for bit %d of stat %d\n", 4, *TICK); */
+                bit = 3;
                 stat_line = true;
         }
 
         bool interrupt_pending = stat_line && !ppu->prev_stat_line;
-        /* if (stat_line && !ppu->prev_stat_line) { */
-        /* printf("stat interrupt (t=%lld, delta=%d, frame = %d, statbit = %d, ly is %d, reason=%s)\n", */
-        /*        *TICK, ppu->line_delta, *FRAME, statbit, ppu->ly, reason); */
+        ppu->prev_stat_line    = stat_line;
 
-        if (interrupt_pending && statbit == 5)
-                printf("fired interrupt for bit %d of stat on frame %ld tick %ld line delta %d\n", 5, *FRAME, *TICK, ppu->line_delta);
-        ppu->prev_stat_line = stat_line;
+        if (interrupt_pending) {
+                *interrupt_flag |= (1 << 1);
+                if (bit == 6)
+                        log_event(STAT_IRQ, "lyc irq (lyc = %d)", ppu->lyc);
+                else
+                        log_event(STAT_IRQ, "mode %c irq", '0' + bit - 3);
+        }
+
         return interrupt_pending;
 }
 
-static void update_coincidence_flag(struct ppu *ppu)
-{
-        if (read_ppu_reg(ppu, LY_ADDR) == ppu->lyc)
-                ppu->stat |= (1 << 2);
-        else
-                ppu->stat &= ~(1 << 2);
-}
+/* NOTE: remove these later */
+/* What I have */
 
-static void step_dot(struct ppu *ppu, u8 *interrupt_flag)
-{
-        update_coincidence_flag(ppu);
-        if (stat_interrupt_pending(ppu, interrupt_flag)) {
-                *interrupt_flag |= 1 << 1;
-                /* printf("requested interrupt on tick %llu frame %d ly is %d!, line delta is %d\n", *TICK, *FRAME, ppu->ly, ppu->line_delta); */
-        }
-        ppu->line_delta++;
-        update_mode(ppu);
-}
+#define BIN_FMT "%c%c%c%c'%c%c%c%c"
+#define BIN(x)                                                  \
+        ('0' + ((x >> 7) & 0x1)), ('0' + ((x >> 6) & 0x1)),     \
+        ('0' + ((x >> 5) & 0x1)), ('0' + ((x >> 4) & 0x1)),     \
+        ('0' + ((x >> 3) & 0x1)), ('0' + ((x >> 2) & 0x1)),     \
+        ('0' + ((x >> 1) & 0x1)), ('0' + ((x >> 0) & 0x1))
 
 static void write_ppu_reg(struct ppu *ppu, u8 v, u16 addr)
 {
         switch(addr) {
-        case LCDC_ADDR:
+        case LCDC_ADDR:;
+                bool lcd_was_enabled = ppu->lcdc >> 7;
+                bool lcd_enabled = v >> 7;
+                if (lcd_was_enabled && !lcd_enabled)
+                        log_event(LCD_TOGGLE, "LCD turned off");
+
+                if (!lcd_was_enabled && lcd_enabled)
+                        log_event(LCD_TOGGLE, "LCD turned on");
+
+                log_event(LCDC_WRITE,
+                          "set to %d = "BIN_FMT" (was %d = "BIN_FMT")",
+                          v, BIN(v), ppu->lcdc, BIN(ppu->lcdc));
+
+                if (!lcd_was_enabled && lcd_enabled) {
+                        ppu->mode = OAM_SCAN;
+                }
                 /* if (!(ppu->lcdc >> 7) && (v >> 7)) { */
+                /*         /\* die("bro"); *\/ */
                 /*         ppu->lcd_reenabled = true; */
                 /*         ppu->mode = OAM_SCAN; */
                 /* } */
-                /* if (!((ppu->lcdc >> 7) & 0x1) && ((v >> 7) & */
-                /* ppu->disabled = !((v >> 7) & 0x1); */
-                /* printf("LCD turned off\n"); */
-                /* else */
-                /* printf("LCD turned on\n"); */
                 ppu->lcdc = v;
                 break;
-        case STAT_ADDR:
+        case STAT_ADDR:;
+                u8 prev = ppu->stat;
+                log_event(STAT_WRITE, "raw value is %d", v);
                 ppu->stat = (v & ~0x7) | (ppu->stat & 0x7);
                 ppu->stat |= (1 << 7);
+                log_event(STAT_WRITE,
+                          "set to %d = "BIN_FMT" (was %d = "BIN_FMT")",
+                          ppu->stat, BIN(ppu->stat), prev, BIN(prev));
                 break;
         case SCY_ADDR:
                 ppu->scy = v;
@@ -447,18 +505,19 @@ static void write_ppu_reg(struct ppu *ppu, u8 v, u16 addr)
                 ppu->ly = v;
                 break;
         case LYC_ADDR:
-                /* printf("wrote LYC = %d = 0x%x on tick %llu frame %d (ly is %d, line_delta is %d)\n", v, v, *TICK, *FRAME, ppu->ly, ppu->line_delta); */
+                log_event(LYC_WRITE, "set to %d (was %d)", v, ppu->lyc);
                 ppu->lyc = v;
                 update_coincidence_flag(ppu);
                 break;
         case DMA_ADDR:
-                printf("Yep, DMA was written to on cycle %ld!\n", *TICK);
+                /* printf("Yep, DMA was written to on cycle %ld!\n", *TICK); */
                 assert(v <= 0xDF); /* TODO: check what happens here? */
                 ppu->dma = v;
                 ppu->dma_requested= true;
                 ppu->cycles_since_dma_requested = 0;
                 break;
         case BGP_ADDR:
+                log_event(BGP_WRITE, "set to %d (was %d)", v, ppu->bgp);
                 ppu->bgp = v;
                 break;
         case OBP0_ADDR:
@@ -490,16 +549,10 @@ static u8 read_ppu_reg(struct ppu *ppu, u16 addr)
         case SCX_ADDR:
                 return ppu->scx;
         case LY_ADDR:
-                /* if (ppu->ly == 153 && ppu->line_delta >= 4) { */
-                /*         /\*         printf("Subbed ly for 0 due to ly == 153\n"); *\/ */
-                /*         return 0; */
-                /* } */
-                /* return 0x90; */
                 return ppu->ly;
         case LYC_ADDR:
                 return ppu->lyc;
         case DMA_ADDR:
-                /* printf("read dma addr %d\n", addr); */
                 return ppu->dma;
         case BGP_ADDR:
                 return ppu->bgp;

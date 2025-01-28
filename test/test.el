@@ -65,11 +65,13 @@
 
 (defun gb-run-test-under-point ()
   (interactive)
+  (move-beginning-of-line nil)
   (let ((test (thing-at-point 'filename)))
     (gb-run-cmd (format "../src/gb %s" test))))
 
 (defun gb-open-test-source-code ()
   (interactive)
+  (move-beginning-of-line nil)
   (let* ((test (thing-at-point 'filename))
 	 (path (string-replace "mooneye/" "" (file-name-sans-extension test)))
 	 (url (format "https://github.com/Gekkio/mooneye-test-suite/blob/main/%s.s" path)))

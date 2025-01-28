@@ -172,18 +172,12 @@ struct ppu {
         u8   dma_offset;
         bool dma_in_progress;
         bool dma_requested;       /* set when DMA (FF46) written to */
-        bool oam_access_blocked;
 
         u32  palette[4];        /* light to dark; ARGB8888 format */
         u32 *display_buf;       /* user-facing display; ARGB8888 format */
 
         u8   shift_count;       /* fifo shift counter (0 - 7) */
         u8   pixel_count;       /* pixel counter (0 - 167) */
-
-        /* shift count only incremented after first B01 */
-        bool shift_counter_enabled;
-        /* pixel count only incremented if shift count has reached SCX & 7 */
-        bool pixel_counter_enabled;
 
         bool scx_pixels_dropped; /* whether initial scx % 8 pixels dropped */
 
@@ -225,9 +219,12 @@ struct ppu {
                 /* bool active; /\* whether pixels are popped from fifo each dot *\/ */
         } bg_fifo, obj_fifo;
 
-        t_cycle line_delta; /* dots elapsed since scan line started */
         int dots_since_scanline_started;
         int dots_since_frame_started; /* only for assert */
+        int frame; /* only for assert */
+
+        bool oam_accessible;
+        bool vram_accessible;
 
         struct sprite {
                 u8 x; /* x position (8 bits) */
