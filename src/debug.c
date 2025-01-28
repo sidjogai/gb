@@ -232,7 +232,6 @@ static void draw_info(int fps, u32 *buf, int bufw, int bufh, u32 *palette, struc
 
         draw_info_string("internal fps %d", fps);
         draw_info_string("ppu mode %d", gb->ppu.mode);
-        draw_info_string("lx %d", gb->ppu.lx);
         draw_info_string("ly %d", gb->ppu.ly);
         draw_info_string("lyc %d", gb->ppu.lyc);
         draw_info_string("stat %x", gb->ppu.stat);

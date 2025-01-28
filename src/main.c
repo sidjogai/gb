@@ -120,47 +120,63 @@ static struct window windows[] = {
         },
 };
 
-#define DO_KEYMAP(code)                                                 \
-        code(KEY_A, gb.joypad.state[A] = key_down);                     \
-        code(KEY_B, gb.joypad.state[B] = key_down);                     \
-        code(KEY_START, gb.joypad.state[START] = key_down);             \
-        code(KEY_SELECT, gb.joypad.state[SELECT] = key_down);           \
-        code(KEY_LEFT, gb.joypad.state[LEFT] = key_down);               \
-        code(KEY_RIGHT, gb.joypad.state[RIGHT] = key_down);             \
-        code(KEY_DOWN, gb.joypad.state[DOWN] = key_down);               \
-        code(KEY_UP, gb.joypad.state[UP] = key_down);                   \
-        code(QUIT, goto quit);                                          \
-        code(RESET, goto reset);                                        \
+#define DO_GB_KEYMAP(code)                                              \
+        code(KEY_A,      gb.joypad.state[A] = key_down)                 \
+        code(KEY_B,      gb.joypad.state[B] = key_down)                 \
+        code(KEY_START,  gb.joypad.state[START] = key_down)             \
+        code(KEY_SELECT, gb.joypad.state[SELECT] = key_down)            \
+        code(KEY_LEFT,   gb.joypad.state[LEFT] = key_down)              \
+        code(KEY_RIGHT,  gb.joypad.state[RIGHT] = key_down)             \
+        code(KEY_DOWN,   gb.joypad.state[DOWN] = key_down)              \
+        code(KEY_UP,     gb.joypad.state[UP] = key_down)
+
+#define DO_MISC_KEYMAP(code)                                            \
+        code(FAST, limit_fps = !limit_fps)                              \
+        code(QUIT, goto quit)                                           \
+        code(RESET, goto reset)                                         \
         code(TOGGLE_WINDOW_MAP_WINDOW,                                  \
-             if (key_down)                                              \
-                     toggle_window_shown(&windows[WINDOW_MAP]));        \
+             toggle_window_shown(&windows[WINDOW_MAP]))                 \
         code(TOGGLE_SPRITES_WINDOW,                                     \
-             if (key_down)                                              \
-                     toggle_window_shown(&windows[SPRITES]));           \
+             toggle_window_shown(&windows[SPRITES]))                    \
+        code(TOGGLE_BG_MAP_WINDOW,                                      \
+             toggle_window_shown(&windows[BG_MAP]))                     \
+        code(TOGGLE_TILE_DATA_WINDOW,                                   \
+             toggle_window_shown(&windows[TILE_DATA]))                  \
         code(INCREASE_SCALE,                                            \
-             if (key_down) {                                            \
-                     for (int i = 0; i < len(windows); i++) {           \
-                             if (window_focused(&windows[i])) {         \
-                                     int s = windows[i].scale;          \
-                                     if (s < 9)                         \
-                                             s++;                       \
-                                     rescale_window(&windows[i], s);    \
-                             }                                          \
+             for (int i = 0; i < len(windows); i++) {                   \
+                     if (window_focused(&windows[i])) {                 \
+                             int s = windows[i].scale;                  \
+                             if (s < 9)                                 \
+                                     s++;                               \
+                             rescale_window(&windows[i], s);            \
                      }                                                  \
-             });                                                        \
+             })                                                         \
         code(DECREASE_SCALE,                                            \
-             if (key_down) {                                            \
-                     for (int i = 0; i < len(windows); i++) {           \
-                             if (window_focused(&windows[i])) {         \
-                                     int s = windows[i].scale;          \
-                                     if (s < 9)                         \
-                                             s++;                       \
-                                     rescale_window(&windows[i], s);    \
-                             }                                          \
+             for (int i = 0; i < len(windows); i++) {                   \
+                     if (window_focused(&windows[i])) {                 \
+                             int s = windows[i].scale;                  \
+                             if (s < 9)                                 \
+                                     s++;                               \
+                             rescale_window(&windows[i], s);            \
                      }                                                  \
-             });
-#define handle_key_down(key, action) case key: key_down = true; action; break;
-#define handle_key_up(key, action) case key: key_down = false; action; break;
+             })
+
+#define handle_gb_key_down(key, action) case key: key_down = true; action; break;
+#define handle_gb_key_up(key, action) case key: key_down = false; action; break;
+
+/* enforce a delay to avoid toggling a window, saving the state, etc. many times
+   per second as keypresses register over multiple frames */
+#define make_misc_key(key, action) MISC##key,
+enum misc_key {
+        DO_MISC_KEYMAP(make_misc_key)
+        MISC_KEYMAP_LEGNTH
+};
+int last_frame_pressed[MISC_KEYMAP_LEGNTH] = {0};
+#define handle_misc_key_down(key, action) case key:             \
+        if (frame + 5 > last_frame_pressed[MISC##key]) {        \
+                last_frame_pressed[MISC##key] = frame;          \
+                action; break;                                  \
+        } 
 
 int main(int argc, char *argv[])
 {
@@ -222,12 +238,13 @@ int main(int argc, char *argv[])
                         switch (event.type) {
                         case SDL_KEYDOWN:
                                 switch (event.key.keysym.sym) {
-                                        DO_KEYMAP(handle_key_down);
+                                        DO_GB_KEYMAP(handle_gb_key_down);
+                                        DO_MISC_KEYMAP(handle_misc_key_down);
                                 }
                                 break;
                         case SDL_KEYUP:
                                 switch (event.key.keysym.sym) {
-                                        DO_KEYMAP(handle_key_up);
+                                        DO_GB_KEYMAP(handle_gb_key_up);
                                 }
                                 break;
                         }
