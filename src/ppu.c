@@ -23,28 +23,28 @@ static bool do_logging;
 
 #define log_event(event, ...)                                           \
         do {                                                            \
-        if (PPU_LOGGING_ENABLED && LOG_PPU_##event) {                   \
-                if (do_logging) {                                       \
-                        printf("frame = %3d, "                          \
-                               "mode = %d, "                            \
-                               "ly = %3d, "                             \
-                               "lx = %3d, "                             \
-                               "dot = %3d "                             \
-                               "dots-since-frame = %3d "                \
-                               "stat = "BIN_FMT" "                      \
-                               "[%s]    \t",                            \
-                               ppu->frame,                              \
-                               ppu->mode,                               \
-                               ppu->ly,                                 \
-                               ppu->lx,                                 \
-                               ppu->dots_since_scanline_started,        \
-                               ppu->dots_since_frame_started,           \
-                               BIN(ppu->stat),                          \
-                               #event);                                 \
-                        printf(__VA_ARGS__);                            \
-                        putchar('\n');                                  \
+                if (PPU_LOGGING_ENABLED && LOG_PPU_##event) {           \
+                        if (do_logging) {                               \
+                                printf("frame = %3d, "                  \
+                                       "mode = %d, "                    \
+                                       "ly = %3d, "                     \
+                                       "pcnt = %3d, "                   \
+                                       "dot = %3d "                     \
+                                       "dots-since-frame = %3d "        \
+                                       "stat = "BIN_FMT" "              \
+                                       "[%s]    \t",                    \
+                                       ppu->frame,                      \
+                                       ppu->mode,                       \
+                                       ppu->ly,                         \
+                                       ppu->pixel_count,                \
+                                       ppu->dots_since_scanline_started, \
+                                       ppu->dots_since_frame_started,   \
+                                       BIN(ppu->stat),                  \
+                                       #event);                         \
+                                printf(__VA_ARGS__);                    \
+                                putchar('\n');                          \
+                        }                                               \
                 }                                                       \
-        }                                                               \
         } while (0)
 
 enum lcdc_flag {
@@ -157,7 +157,6 @@ static void init_new_scanline(struct ppu *ppu)
 
         ppu->shift_count = 0;
         ppu->pixel_count = 0;
-        ppu->lx = 0;
 
         /* as dots_since_scanline_started++ at the end of tick_ppu() */
         ppu->dots_since_scanline_started = -1;
@@ -194,9 +193,7 @@ static void new_vblank(struct ppu *ppu, u8 *interrupt_flag)
                 ppu->ly = 0;
                 update_coincidence_flag(ppu);
                 check_stat(ppu, interrupt_flag);
-        }
-
-        if (ppu->dots_since_scanline_started == 455) {
+        } else if (ppu->dots_since_scanline_started == 455) {
                 if (ppu->ly == 0) {
                         init_new_scanline(ppu);
                         switch_to_mode(ppu, OAM_SCAN);
@@ -239,13 +236,14 @@ static void new_oam_scan(struct ppu *ppu)
                         ppu->obj_buf[ppu->obj_buf_len] = obj;
                         log_event(TEMP, "oam scan y = %d, x = %d, ind = %x",
                                   obj.y, obj.x, obj.tile_index);
+
                         if (++ppu->obj_buf_len == 10)
                                 break;
                 }
         }
         for (int i = 1; i < ppu->obj_buf_len; i++)
                 for (int j = i; j > 0; j--)
-                        if (ppu->obj_buf[j].x < ppu->obj_buf[j - 1].x) {
+                        if (ppu->obj_buf[j - 1].x > ppu->obj_buf[j].x) {
                                 struct obj temp     = ppu->obj_buf[j - 1];
                                 ppu->obj_buf[j - 1] = ppu->obj_buf[j];
                                 ppu->obj_buf[j]     = temp;
@@ -286,7 +284,7 @@ static void push_to_fifo(struct fifo *fifo, struct fifo_entry e)
         fifo->len++;
 }
 
-static u8 bg_bitplane_formula(struct ppu *ppu, u8 tile_id, u16 initial_offset)
+static u8 get_bg_bitplane(struct ppu *ppu, u8 tile_id, u16 initial_offset)
 {
         initial_offset |= !((ppu->lcdc & 0x10) || (tile_id & 0x80)) << 12;
         initial_offset |= tile_id << 4;
@@ -298,41 +296,41 @@ static u8 bg_bitplane_formula(struct ppu *ppu, u8 tile_id, u16 initial_offset)
         return ppu->vram[initial_offset];
 }
 
-static u8 obj_bitplane_formula(struct ppu *ppu, u8 tile_id, u16 initial_offset)
+static u8 get_obj_bitplane(struct ppu *ppu, u8 tile_id, u16 initial_offset)
 {
         static const u8 reversed[256] = {
-                0x00, 0x80, 0x40, 0xc0, 0x20, 0xa0, 0x60, 0xe0,
-                0x10, 0x90, 0x50, 0xd0, 0x30, 0xb0, 0x70, 0xf0,
-                0x08, 0x88, 0x48, 0xc8, 0x28, 0xa8, 0x68, 0xe8,
-                0x18, 0x98, 0x58, 0xd8, 0x38, 0xb8, 0x78, 0xf8,
-                0x04, 0x84, 0x44, 0xc4, 0x24, 0xa4, 0x64, 0xe4,
-                0x14, 0x94, 0x54, 0xd4, 0x34, 0xb4, 0x74, 0xf4,
-                0x0c, 0x8c, 0x4c, 0xcc, 0x2c, 0xac, 0x6c, 0xec,
-                0x1c, 0x9c, 0x5c, 0xdc, 0x3c, 0xbc, 0x7c, 0xfc,
-                0x02, 0x82, 0x42, 0xc2, 0x22, 0xa2, 0x62, 0xe2,
-                0x12, 0x92, 0x52, 0xd2, 0x32, 0xb2, 0x72, 0xf2,
-                0x0a, 0x8a, 0x4a, 0xca, 0x2a, 0xaa, 0x6a, 0xea,
-                0x1a, 0x9a, 0x5a, 0xda, 0x3a, 0xba, 0x7a, 0xfa,
-                0x06, 0x86, 0x46, 0xc6, 0x26, 0xa6, 0x66, 0xe6,
-                0x16, 0x96, 0x56, 0xd6, 0x36, 0xb6, 0x76, 0xf6,
-                0x0e, 0x8e, 0x4e, 0xce, 0x2e, 0xae, 0x6e, 0xee,
-                0x1e, 0x9e, 0x5e, 0xde, 0x3e, 0xbe, 0x7e, 0xfe,
-                0x01, 0x81, 0x41, 0xc1, 0x21, 0xa1, 0x61, 0xe1,
-                0x11, 0x91, 0x51, 0xd1, 0x31, 0xb1, 0x71, 0xf1,
-                0x09, 0x89, 0x49, 0xc9, 0x29, 0xa9, 0x69, 0xe9,
-                0x19, 0x99, 0x59, 0xd9, 0x39, 0xb9, 0x79, 0xf9,
-                0x05, 0x85, 0x45, 0xc5, 0x25, 0xa5, 0x65, 0xe5,
-                0x15, 0x95, 0x55, 0xd5, 0x35, 0xb5, 0x75, 0xf5,
-                0x0d, 0x8d, 0x4d, 0xcd, 0x2d, 0xad, 0x6d, 0xed,
-                0x1d, 0x9d, 0x5d, 0xdd, 0x3d, 0xbd, 0x7d, 0xfd,
-                0x03, 0x83, 0x43, 0xc3, 0x23, 0xa3, 0x63, 0xe3,
-                0x13, 0x93, 0x53, 0xd3, 0x33, 0xb3, 0x73, 0xf3,
-                0x0b, 0x8b, 0x4b, 0xcb, 0x2b, 0xab, 0x6b, 0xeb,
-                0x1b, 0x9b, 0x5b, 0xdb, 0x3b, 0xbb, 0x7b, 0xfb,
-                0x07, 0x87, 0x47, 0xc7, 0x27, 0xa7, 0x67, 0xe7,
-                0x17, 0x97, 0x57, 0xd7, 0x37, 0xb7, 0x77, 0xf7,
-                0x0f, 0x8f, 0x4f, 0xcf, 0x2f, 0xaf, 0x6f, 0xef,
-                0x1f, 0x9f, 0x5f, 0xdf, 0x3f, 0xbf, 0x7f, 0xff,
+                0x00, 0x80, 0x40, 0xC0, 0x20, 0xA0, 0x60, 0xE0,
+                0x10, 0x90, 0x50, 0xD0, 0x30, 0xB0, 0x70, 0xF0,
+                0x08, 0x88, 0x48, 0xC8, 0x28, 0xA8, 0x68, 0xE8,
+                0x18, 0x98, 0x58, 0xD8, 0x38, 0xB8, 0x78, 0xF8,
+                0x04, 0x84, 0x44, 0xC4, 0x24, 0xA4, 0x64, 0xE4,
+                0x14, 0x94, 0x54, 0xD4, 0x34, 0xB4, 0x74, 0xF4,
+                0x0C, 0x8C, 0x4C, 0xCC, 0x2C, 0xAC, 0x6C, 0xEC,
+                0x1C, 0x9C, 0x5C, 0xDC, 0x3C, 0xBC, 0x7C, 0xFC,
+                0x02, 0x82, 0x42, 0xC2, 0x22, 0xA2, 0x62, 0xE2,
+                0x12, 0x92, 0x52, 0xD2, 0x32, 0xB2, 0x72, 0xF2,
+                0x0A, 0x8A, 0x4A, 0xCA, 0x2A, 0xAA, 0x6A, 0xEA,
+                0x1A, 0x9A, 0x5A, 0xDA, 0x3A, 0xBA, 0x7A, 0xFA,
+                0x06, 0x86, 0x46, 0xC6, 0x26, 0xA6, 0x66, 0xE6,
+                0x16, 0x96, 0x56, 0xD6, 0x36, 0xB6, 0x76, 0xF6,
+                0x0E, 0x8E, 0x4E, 0xCE, 0x2E, 0xAE, 0x6E, 0xEE,
+                0x1E, 0x9E, 0x5E, 0xDE, 0x3E, 0xBE, 0x7E, 0xFE,
+                0x01, 0x81, 0x41, 0xC1, 0x21, 0xA1, 0x61, 0xE1,
+                0x11, 0x91, 0x51, 0xD1, 0x31, 0xB1, 0x71, 0xF1,
+                0x09, 0x89, 0x49, 0xC9, 0x29, 0xA9, 0x69, 0xE9,
+                0x19, 0x99, 0x59, 0xD9, 0x39, 0xB9, 0x79, 0xF9,
+                0x05, 0x85, 0x45, 0xC5, 0x25, 0xA5, 0x65, 0xE5,
+                0x15, 0x95, 0x55, 0xD5, 0x35, 0xB5, 0x75, 0xF5,
+                0x0D, 0x8D, 0x4D, 0xCD, 0x2D, 0xAD, 0x6D, 0xED,
+                0x1D, 0x9D, 0x5D, 0xDD, 0x3D, 0xBD, 0x7D, 0xFD,
+                0x03, 0x83, 0x43, 0xC3, 0x23, 0xA3, 0x63, 0xE3,
+                0x13, 0x93, 0x53, 0xD3, 0x33, 0xB3, 0x73, 0xF3,
+                0x0B, 0x8B, 0x4B, 0xCB, 0x2B, 0xAB, 0x6B, 0xEB,
+                0x1B, 0x9B, 0x5B, 0xDB, 0x3B, 0xBB, 0x7B, 0xFB,
+                0x07, 0x87, 0x47, 0xC7, 0x27, 0xA7, 0x67, 0xE7,
+                0x17, 0x97, 0x57, 0xD7, 0x37, 0xB7, 0x77, 0xF7,
+                0x0F, 0x8F, 0x4F, 0xCF, 0x2F, 0xAF, 0x6F, 0xEF,
+                0x1F, 0x9F, 0x5F, 0xDF, 0x3F, 0xBF, 0x7F, 0xFF,
         };
 
         struct obj obj = ppu->obj_buf[ppu->obj_index];
@@ -349,13 +347,13 @@ static u8 obj_bitplane_formula(struct ppu *ppu, u8 tile_id, u16 initial_offset)
         assert(vram_offset_to_addr(initial_offset) >= TILE_DATA_START &&
                vram_offset_to_addr(initial_offset) <= TILE_DATA_END);
 
-        u8 data = ppu->vram[initial_offset];
+        u8 bitplane = ppu->vram[initial_offset];
 
         /* horizontal flip */
         if ((obj.attributes >> 5) & 0x1)
-                data = reversed[data];
+                bitplane = reversed[bitplane];
 
-        return data;
+        return bitplane;
 }
 
 static void load_bg_fifo(struct ppu *ppu)
@@ -363,9 +361,9 @@ static void load_bg_fifo(struct ppu *ppu)
         assert(ppu->bg_fifo.len == 0);
         struct fifo_entry e;
         for (int bit = 7; bit >= 0; bit--) {
-                u8 low    = (ppu->bg_fetcher.bitplane0 >> bit) & 0x1;
-                u8 high   = (ppu->bg_fetcher.bitplane1 >> bit) & 0x1;
-                e.color   = (u8)(low | high << 1);
+                u8 low     = (ppu->bg_fetcher.bitplane0 >> bit) & 0x1;
+                u8 high    = (ppu->bg_fetcher.bitplane1 >> bit) & 0x1;
+                e.color_id = (u8)(low | high << 1);
                 push_to_fifo(&ppu->bg_fifo, e);
         }
         assert(ppu->bg_fifo.len == 8);
@@ -380,7 +378,7 @@ static void load_obj_fifo(struct ppu *ppu)
         for (int bit = 7; bit >= 0; bit--) {
                 u8 low     = (ppu->obj_fetcher.bitplane0 >> bit) & 0x1;
                 u8 high    = (ppu->obj_fetcher.bitplane1 >> bit) & 0x1;
-                e.color    = (u8)(low | high << 1);
+                e.color_id = (u8)(low | high << 1);
                 e.palette  = (obj.attributes >> 4) & 0x1;
                 e.priority = (obj.attributes >> 7) & 0x1;
                 push_to_fifo(&ppu->obj_fifo, e);
@@ -419,8 +417,9 @@ static void fetch_bg_bitplane0_idle(struct ppu *ppu)
 
 static void fetch_bg_bitplane0(struct ppu *ppu)
 {
-        u8 tile_id = ppu->bg_fetcher.tile_id;
-        ppu->bg_fetcher.bitplane0 = bg_bitplane_formula(ppu, tile_id, 0);
+        ppu->bg_fetcher.bitplane0 = get_bg_bitplane(ppu,
+                                                    ppu->bg_fetcher.tile_id,
+                                                    0);
 
         ppu->bg_fetcher.fn = fetch_bg_bitplane1_idle;
         log_event(FIFO, "fetch_bg_bitplane0");
@@ -434,8 +433,9 @@ static void fetch_bg_bitplane1_idle(struct ppu *ppu)
 
 static void fetch_bg_bitplane1(struct ppu *ppu)
 {
-        u8 tile_id = ppu->bg_fetcher.tile_id;
-        ppu->bg_fetcher.bitplane1 = bg_bitplane_formula(ppu, tile_id, 1);
+        ppu->bg_fetcher.bitplane1 = get_bg_bitplane(ppu,
+                                                    ppu->bg_fetcher.tile_id,
+                                                    1);
 
         ppu->bg_fetcher.fn = bg_push;
         log_event(FIFO, "fetch_bg_bitplane1");
@@ -511,8 +511,9 @@ static void fetch_obj_bitplane0_idle(struct ppu *ppu)
 
 static void fetch_obj_bitplane0(struct ppu *ppu)
 {
-        u8 tile_id = ppu->obj_fetcher.tile_id;
-        ppu->obj_fetcher.bitplane0 = obj_bitplane_formula(ppu, tile_id, 0);
+        ppu->obj_fetcher.bitplane0 = get_obj_bitplane(ppu,
+                                                      ppu->obj_fetcher.tile_id,
+                                                      0);
 
         ppu->obj_fetcher.fn = fetch_obj_bitplane1_idle;
         log_event(FIFO, "fetch_obj_bitplane0");
@@ -526,15 +527,16 @@ static void fetch_obj_bitplane1_idle(struct ppu *ppu)
 
 static void fetch_obj_bitplane1(struct ppu *ppu)
 {
-        u8 tile_id = ppu->obj_fetcher.tile_id;
-        ppu->obj_fetcher.bitplane1 = obj_bitplane_formula(ppu, tile_id, 1);
+        ppu->obj_fetcher.bitplane1 = get_obj_bitplane(ppu,
+                                                      ppu->obj_fetcher.tile_id,
+                                                      1);
 
         ppu->obj_fetcher.fn = fetch_obj_bitplane1_idle;
         log_event(FIFO, "fetch_obj_bitplane0");
 
         /* do the obj push instantly after the fetch */
 
-        ppu->obj_fifo.len = 0; /* TODO: remove this! */
+        ppu->ppobj_fifo.len = 0; /* TODO: remove this! */
 
         load_obj_fifo(ppu);
         ppu->obj_encountered  = false;
@@ -585,20 +587,20 @@ static void new_drawing(struct ppu *ppu)
                                 ppu->scx_pixels_dropped = true;
 
                 if (ppu->scx_pixels_dropped && ppu->pixel_count++ >= 8) {
-                        bool use_bg_pixel = false;
+                        enum {OBJ_PX, BG_PX} selected_pixel = OBJ_PX;
                         if (ppu->lcdc & BG_WIN_ENABLE) {
                                 if (!(ppu->lcdc & OBJ_ENABLE))
-                                        use_bg_pixel = true;
-                                else if (obj.priority && bg.color || !obj.color)
-                                        use_bg_pixel = true;
+                                        selected_pixel = BG_PX;
+                                else if (obj.priority && bg.color_id != 0)
+                                        selected_pixel = BG_PX;
+                                else if (obj.color_id == 0)
+                                        selected_pixel = BG_PX;
                         }
 
-                        u8 color, palette;
-                        if (use_bg_pixel) {
-                                color   = bg.color;
-                                palette = ppu->bgp;
-                        } else {
-                                color   = obj.color;
+                        u8 color   = bg.color_id;
+                        u8 palette = ppu->bgp;
+                        if (selected_pixel == OBJ_PX) {
+                                color   = obj.color_id;
                                 palette = obj.palette ? ppu->obp1 : ppu->obp0;
                         }
 
@@ -607,11 +609,9 @@ static void new_drawing(struct ppu *ppu)
                                 color = 0;
 
                         u32 gui_color = ppu->palette[color];
-                        int pos = ppu->ly * 160 + ppu->lx;
-                        ppu->lx++;
+                        int pos = ppu->ly * 160 + ppu->pixel_count - 9;
                         ppu->display_buf[pos] = gui_color;
                         if (ppu->pixel_count == 168) {
-                                assert(ppu->lx == 160);
                                 set_vram_access(ppu, true);
                                 /* set_oam_access(ppu, true); */
                                 switch_to_mode(ppu, HBLANK);

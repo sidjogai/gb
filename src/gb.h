@@ -153,8 +153,6 @@ struct ppu {
         u8 wy;                  /* FF4A - Window Y position */
         u8 wx;                  /* FF4B - Window X position plus 7 */
 
-        u8 lx;                  /* internal horizontal counter; not exposed */
-
         u8   cycles_since_dma_requested;
         u8   dma_offset;
         bool dma_in_progress;
@@ -188,7 +186,7 @@ struct ppu {
 
         struct fifo {
                 struct fifo_entry {
-                        u8 color;       /* 0-3; palette not applied */
+                        u8 color_id;    /* 0-3 */
                         u8 palette;     /* bit 4 from OAM attributes */
                         u8 priority;    /* bit 7 from OAM attributes */
                 } entries[8];
