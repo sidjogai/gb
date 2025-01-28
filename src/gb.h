@@ -185,6 +185,10 @@ struct ppu {
         /* pixel count only incremented if shift count has reached SCX & 7 */
         bool pixel_counter_enabled;
 
+        bool initial_pixels_dropped;
+
+        u8 initial_delay; /* delay of 8 at the start of a scanline */
+
         bool prev_stat_line;
 
         /* bit 7 of LCDC is set after being unset */
@@ -220,6 +224,15 @@ struct ppu {
         } bg_fifo, obj_fifo;
 
         t_cycle line_delta; /* dots elapsed since scan line started */
+        int dots_since_scanline_started;
+
+        struct sprite {
+                u8 x; /* x position (8 bits) */
+                u8 tile_row; /* tile row 0-15 (4 bits) */
+                u8 sprite_number; /* sprite number 0-39 (6 bits) */
+        } sprites[10];
+
+        bool in_first_fetch;
 
         enum ppu_mode {
                 HBLANK,

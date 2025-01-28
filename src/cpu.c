@@ -1,7 +1,14 @@
 static void tick_cpu(struct cpu *cpu)
 {
         sync_timer(cpu->mem->timer, &cpu->mem->int_flag);
-        sync_ppu(cpu->mem->ppu, &cpu->mem->int_flag);
+        /* sync_ppu(cpu->mem->ppu, &cpu->mem->int_flag); */
+        tick_ppu(cpu->mem->ppu, &cpu->mem->int_flag);
+        tick_ppu(cpu->mem->ppu, &cpu->mem->int_flag);
+        tick_ppu(cpu->mem->ppu, &cpu->mem->int_flag);
+        tick_ppu(cpu->mem->ppu, &cpu->mem->int_flag);
+        /* sync_ppu(cpu->mem->ppu, &cpu->mem->int_flag); */
+        /* sync_ppu(cpu->mem->ppu, &cpu->mem->int_flag); */
+        /* sync_ppu(cpu->mem->ppu, &cpu->mem->int_flag); */
         cpu->tick += 1;
 }
 

@@ -72,7 +72,7 @@ static u8 read_timer(struct timer *t, u16 addr)
         case DIV_ADDR:  return t->div >> 8;
         case TIMA_ADDR: return t->tima;
         case TMA_ADDR:  return t->tma;
-        case TAC_ADDR:  return t->tac;
+        case TAC_ADDR:  return t->tac | ~0x7;
         }
 
         assert(false);

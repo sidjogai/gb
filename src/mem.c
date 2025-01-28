@@ -56,15 +56,14 @@ static void write_mem(struct mem *mem, u8 v, u16 addr)
                 ; /* TODO: palette stuff */
         else if (addr <= 0xFF4F)
                 ; /* TODO: check what to do here */
-        else if (addr <= 0xFF50)
-                ; /* TODO: non-zero to disable boot ROM */
         else if (addr <= 0xFF7F)
                 ; /* TODO: check what to do here */
         else if (addr <= 0xFFFE)
                 mem->hram[addr - HRAM_START] = v;
-        else if (addr == 0xFFFF)
+        else if (addr == 0xFFFF) {
                 mem->int_enable = v;
-        else
+                printf("writing you %x\n", mem->int_enable);
+        } else
                 die("write_mem: invalid address $%.04x", addr);
 }
 
@@ -116,20 +115,19 @@ static u8 read_mem(struct mem *mem, u16 addr)
         else if (addr <= 0xFF49)
                 v = read_ppu_reg(mem->ppu, addr);
         else if (addr == 0xFF50)
-                v = mem->bootrom_disabled;
+                v = mem->bootrom_disabled & 0x1;
         else if (addr <= 0xFF4B)
                 ;
         else if (addr <= 0xFF4F)
                 ; // TODO check what to do here
-        else if (addr <= 0xFF50)
-                ; // TODO non-zero to disable boot ROM
         else if (addr <= 0xFF7F)
                 ; // TODO check what to do here
         else if (addr <= 0xFFFE)
                 v = mem->hram[addr - HRAM_START];
-        else if (addr == 0xFFFF)
-                v = mem->int_enable | 0xE0;
-        else
+        else if (addr == 0xFFFF) {
+                v = mem->int_enable;
+                printf("Giving you %x\n", v);
+        } else
                 die("read_mem: invalid address $%.04x", addr);
         return v;
 }

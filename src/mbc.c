@@ -69,7 +69,7 @@ static u8 mbc1_read_rom(struct mbc *m, u16 addr)
         else if (m->mbc1.mode == 1)
                 bank = m->mbc1.bank2 << 5;
 
-        return m->rom[(bank & m->rom_banks - 1) << 14 | (addr & 0x3FFF)];
+        return m->rom[(bank & (m->rom_banks - 1)) << 14 | (addr & 0x3FFF)];
 }
 
 static u32 external_ram_phys_addr(struct mbc *m, u16 addr)

@@ -1,3 +1,4 @@
+/* #define GB_TRACE */
 #ifdef GB_TRACE
 /* https://github.com/wheremyfoodat/Gameboy-logs */
 #define TRACE(...)                                              \
@@ -12,7 +13,7 @@
                        read_mem(cpu->mem, cpu->regs.pc),        \
                        read_mem(cpu->mem, cpu->regs.pc + 1),    \
                        read_mem(cpu->mem, cpu->regs.pc + 2),    \
-                       read_mem(cpu->mem, cpu->regs.pc + 3), cpu->ime.enabled, read_mem(cpu->mem, 0xffff), read_mem(cpu->mem, 0xff0f)); \
+                       read_mem(cpu->mem, cpu->regs.pc + 3), cpu->ime, read_mem(cpu->mem, 0xffff), read_mem(cpu->mem, 0xff0f)); \
                 printf(__VA_ARGS__);                            \
                 putchar('\n');                                  \
         } while(0)

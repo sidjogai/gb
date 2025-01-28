@@ -50,7 +50,6 @@ static u64 *FRAME;
 #include "gb.h"
 
 #include "ppu.c"
-#include "ppu_mode3.c"
 #include "cpu.c"
 #include "debug.c"
 #include "init.c"
@@ -216,7 +215,6 @@ int main(int argc, char *argv[])
 
         if (SDL_Init(SDL_INIT_VIDEO) < 0)
                 sdl_fail();
-        atexit(SDL_Quit);
 
         for (int i = 0; i < len(windows); i++)
                 if (windows[i].shown)
