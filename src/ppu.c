@@ -132,7 +132,7 @@ static void init_new_scanline(struct ppu *ppu)
         assert(ppu->vram_accessible);
 
         ppu->active_fetcher = BG_FETCHER;
-        ppu->sprite_encountered = false;
+        ppu->obj_encountered = false;
 
         ppu->initial_fetch_completed = false;
         ppu->scx_pixels_dropped = false;
@@ -211,16 +211,16 @@ static void new_oam_scan(struct ppu *ppu)
         if (ppu->dots_since_scanline_started == 79) {
 
                 /* just do it all in one go at the end */
-                ppu->nslots = 0;
+                ppu->obj_buf_len = 0;
 
-                u8 sprite_height = (ppu->lcdc & (1 << 2)) ? 16 : 8;
+                u8 obj_height = (ppu->lcdc & (1 << 2)) ? 16 : 8;
 
-                if (sprite_height == 16) {/* TODO */}
+                if (obj_height == 16) {/* TODO */}
 
                 for (u8 *p = ppu->oam; p < ppu->oam + 160; p += 4) {
                         u8 y = *p - 16;
-                        if (ppu->ly >= y && ppu->ly < y + sprite_height) {
-                                ppu->obj_slots[ppu->nslots++] = (struct obj) {
+                        if (ppu->ly >= y && ppu->ly < y + obj_height) {
+                                ppu->obj_buf[ppu->obj_buf_len++] = (struct obj) {
                                         .y          = p[0],
                                         .x          = p[1],
                                         .tile_index = p[2],
@@ -228,11 +228,11 @@ static void new_oam_scan(struct ppu *ppu)
                                 };
 
                                 log_event(TEMP, "oam scan y = %d, x = %d, ind = %x",
-                                        ppu->obj_slots[ppu->nslots-1].y,
-                                        ppu->obj_slots[ppu->nslots-1].x,
-                                        ppu->obj_slots[ppu->nslots-1].tile_index);
+                                        ppu->obj_buf[ppu->obj_buf_len-1].y,
+                                        ppu->obj_buf[ppu->obj_buf_len-1].x,
+                                        ppu->obj_buf[ppu->obj_buf_len-1].tile_index);
 
-                                if (ppu->nslots == 10)
+                                if (ppu->obj_buf_len == 10)
                                         break;
                         }
                 }
@@ -322,7 +322,7 @@ static u8 obj_bitplane_formula(struct ppu *ppu, u8 tile_id, u16 initial_offset)
                 0x1f, 0x9f, 0x5f, 0xdf, 0x3f, 0xbf, 0x7f, 0xff,
         };
 
-        struct obj obj = ppu->obj_slots[ppu->obj_index];
+        struct obj obj = ppu->obj_buf[ppu->obj_index];
 
         u8 y_bits = ppu->ly - (obj.y - 16);
 
@@ -345,31 +345,34 @@ static u8 obj_bitplane_formula(struct ppu *ppu, u8 tile_id, u16 initial_offset)
         return data;
 }
 
-static void load_obj_fifo(struct ppu *ppu)
-{
-        /* NOTE: obj fifo we should always reload it */
-        assert(ppu->obj_fifo.len == 0);
-        struct fifo_entry e;
-        for (int bit = 7; bit >= 0; bit--) {
-                u8 low    = ((ppu->obj_fetcher.bitplane0 >> bit) & 1);
-                u8 high   = ((ppu->obj_fetcher.bitplane1 >> bit) & 1);
-                e.color   = (u8)(low | high << 1);
-                push_to_fifo(&ppu->obj_fifo, e);
-        }
-        assert(ppu->obj_fifo.len == 8);
-}
-
 static void load_bg_fifo(struct ppu *ppu)
 {
         assert(ppu->bg_fifo.len == 0);
         struct fifo_entry e;
         for (int bit = 7; bit >= 0; bit--) {
-                u8 low    = ((ppu->bg_fetcher.bitplane0 >> bit) & 1);
-                u8 high   = ((ppu->bg_fetcher.bitplane1 >> bit) & 1);
+                u8 low    = (ppu->bg_fetcher.bitplane0 >> bit) & 0x1;
+                u8 high   = (ppu->bg_fetcher.bitplane1 >> bit) & 0x1;
                 e.color   = (u8)(low | high << 1);
                 push_to_fifo(&ppu->bg_fifo, e);
         }
         assert(ppu->bg_fifo.len == 8);
+}
+
+static void load_obj_fifo(struct ppu *ppu)
+{
+        /* NOTE: obj fifo we should always reload it */
+        assert(ppu->obj_fifo.len == 0);
+        struct fifo_entry e;
+        struct obj obj = ppu->obj_buf[ppu->obj_index];
+        for (int bit = 7; bit >= 0; bit--) {
+                u8 low     = (ppu->obj_fetcher.bitplane0 >> bit) & 0x1;
+                u8 high    = (ppu->obj_fetcher.bitplane1 >> bit) & 0x1;
+                e.color    = (u8)(low | high << 1);
+                e.palette  = (obj.attributes >> 4) & 0x1;
+                e.priority = (obj.attributes >> 7) & 0x1;
+                push_to_fifo(&ppu->obj_fifo, e);
+        }
+        assert(ppu->obj_fifo.len == 8);
 }
 
 static void fetch_bg_tile_id_idle(struct ppu *ppu)
@@ -428,10 +431,10 @@ static void fetch_bg_bitplane1(struct ppu *ppu)
                 load_bg_fifo(ppu);
                 ppu->initial_fetch_completed = true;
                 ppu->bg_fetcher.fn = fetch_bg_tile_id_idle;
-        } else if (ppu->sprite_encountered) {
+        } else if (ppu->obj_encountered) {
                 /* NOTE: fetch_tile_id instead of fetch_tile_id_idle as the
-                   first sprite cycle overlaps the last background cycle. */
-                log_event(FIFO, "sprite fetch done");
+                   first obj cycle overlaps the last background cycle. */
+                log_event(FIFO, "obj fetch done");
                 ppu->active_fetcher = OBJ_FETCHER;
                 ppu->obj_fetcher.fn = fetch_obj_tile_id;
         }
@@ -439,7 +442,7 @@ static void fetch_bg_bitplane1(struct ppu *ppu)
 
 static void bg_push(struct ppu *ppu)
 {
-        if (!ppu->sprite_encountered) {
+        if (!ppu->obj_encountered) {
                 if (ppu->bg_fifo.len == 0) {
                         load_bg_fifo(ppu);
                         ppu->bg_fetcher.fn = fetch_bg_tile_id_idle;
@@ -472,7 +475,7 @@ static void fetch_obj_tile_id_idle(struct ppu *ppu)
 
 static void fetch_obj_tile_id(struct ppu *ppu)
 {
-        ppu->obj_fetcher.tile_id = ppu->obj_slots[ppu->obj_index].tile_index;
+        ppu->obj_fetcher.tile_id = ppu->obj_buf[ppu->obj_index].tile_index;
 
         ppu->obj_fetcher.fn = fetch_obj_bitplane0_idle;
         log_event(FIFO, "fetch_obj_tile_id");
@@ -512,7 +515,7 @@ static void fetch_obj_bitplane1(struct ppu *ppu)
         ppu->obj_fifo.len = 0; /* TODO: remove this! */
 
         load_obj_fifo(ppu);
-        ppu->sprite_encountered  = false;
+        ppu->obj_encountered  = false;
         ppu->obj_fetcher.fn = fetch_obj_tile_id_idle;
         ppu->active_fetcher      = BG_FETCHER;
 
@@ -524,8 +527,8 @@ static int check_obj(struct ppu *ppu)
         /* TODO: do we need to sort entries here? */
 
         int obj_index = -1;
-        for (int i = 0; i < ppu->nslots; i++) {
-                int x = ppu->obj_slots[i].x;
+        for (int i = 0; i < ppu->obj_buf_len; i++) {
+                int x = ppu->obj_buf[i].x;
                 /* TODO: use ppu->pixel_count instead? */
                 if (x >= ppu->lx && x <= ppu->lx + 8)
                         obj_index = i;
@@ -535,30 +538,27 @@ static int check_obj(struct ppu *ppu)
 
 static void new_drawing(struct ppu *ppu)
 {
-        for (int i = 0; i < ppu->nslots; i++) {
-                int x = ppu->obj_slots[i].x;
+        for (int i = 0; i < ppu->obj_buf_len; i++) {
+                int x = ppu->obj_buf[i].x;
                 if (x >= ppu->lx && x <= ppu->lx + 8) {
                         log_event(TEMP, "found obj with x = %d, id = %d "
-                                  "(lx was %d), seen is %d and sprite_encountered is %d ",
-                                  x, 
-                                  ppu->obj_slots[i].tile_index, 
-                                  ppu->lx, ppu->obj_slots[i].seen, 
-                                  ppu->sprite_encountered);
+                                  "(lx was %d), seen is %d and obj_encountered is %d ",
+                                  x,
+                                  ppu->obj_buf[i].tile_index,
+                                  ppu->lx, ppu->obj_buf[i].seen,
+                                  ppu->obj_encountered);
                 }
         }
 
         int obj_index = check_obj(ppu);
-
-        log_event(TEMP, "obj index gave %d", obj_index);
-
         if (obj_index != -1 &&
-            !ppu->sprite_encountered &&
-            !ppu->obj_slots[obj_index].seen) {
-                ppu->obj_slots[obj_index].seen = true;
+            !ppu->obj_encountered &&
+            !ppu->obj_buf[obj_index].seen) {
+                ppu->obj_buf[obj_index].seen = true;
                 ppu->obj_index = obj_index;
                 do_logging = true;
-                ppu->sprite_encountered = true;
-                log_event(TEMP, "found a sprite, its index was %d", ppu->obj_index);
+                ppu->obj_encountered = true;
+                log_event(TEMP, "found an obj, its index was %d", ppu->obj_index);
 
                 if (ppu->active_fetcher == BG_FETCHER && ppu->bg_fetcher.fn == bg_push) {
                         ppu->active_fetcher = OBJ_FETCHER;
@@ -566,19 +566,13 @@ static void new_drawing(struct ppu *ppu)
                 }
         }
 
-        if (ppu->initial_fetch_completed && !ppu->sprite_encountered) {
+        if (ppu->initial_fetch_completed && !ppu->obj_encountered) {
                 assert(ppu->dots_since_scanline_started >= 86);
 
                 struct fifo_entry bg = pop_fifo(&ppu->bg_fifo);
-
-                struct fifo_entry obj;
-
-                bool use_obj = false;
-
-                if (ppu->obj_fifo.len > 0) {
+                struct fifo_entry obj = {0};
+                if (ppu->obj_fifo.len > 0)
                         obj = pop_fifo(&ppu->obj_fifo);
-                        use_obj = true;
-                }
 
                 log_event(FIFO, "FIFOs clocked: BG len = %d; OBJ len = %d",
                           ppu->bg_fifo.len, ppu->obj_fifo.len);
@@ -588,21 +582,33 @@ static void new_drawing(struct ppu *ppu)
                                 ppu->scx_pixels_dropped = true;
 
                 if (ppu->scx_pixels_dropped && ppu->pixel_count++ >= 8) {
-                        u8 color;
-                        color = (ppu->bgp >> (bg.color * 2)) & 0x3;
+                        bool use_bg_pixel = false;
+                        if (ppu->lcdc & 0x1) {
+                                if (!((ppu->lcdc >> 1) & 0x1))
+                                        use_bg_pixel = true;
+                                else if (obj.priority && bg.color || !obj.color)
+                                        use_bg_pixel = true;
+                        }
 
-                        if (use_obj)
-                                color = obj.color;
+                        u8 color, palette;
+                        if (use_bg_pixel) {
+                                color   = bg.color;
+                                palette = ppu->bgp;
+                        } else {
+                                color   = obj.color;
+                                palette = obj.palette ? ppu->obp1 : ppu->obp0;
+                        }
 
+                        color = (palette >> (color * 2)) & 0x3;
                         if ((ppu->lcdc & 0x1) == 0)
                                 color = 0;
+
                         u32 gui_color = ppu->palette[color];
                         int pos = ppu->ly * 160 + ppu->lx;
-                        /* log_event(TEMP, "pushed pxiel to the lcd, lx++"); */
                         ppu->lx++;
                         ppu->display_buf[pos] = gui_color;
                         if (ppu->pixel_count == 168) {
-                                /* log_event(MODE3_TIMING, "Took %d dots", ppu->dots_since_scanline_started); */
+                                assert(ppu->lx == 160);
                                 set_vram_access(ppu, true);
                                 /* set_oam_access(ppu, true); */
                                 switch_to_mode(ppu, HBLANK);
@@ -725,7 +731,6 @@ static void write_ppu_reg(struct ppu *ppu, u8 v, u16 addr)
                         ppu->mode = OAM_SCAN;
                 }
                 /* if (!(ppu->lcdc >> 7) && (v >> 7)) { */
-                /*         /\* die("bro"); *\/ */
                 /*         ppu->lcd_reenabled = true; */
                 /*         ppu->mode = OAM_SCAN; */
                 /* } */
@@ -757,7 +762,6 @@ static void write_ppu_reg(struct ppu *ppu, u8 v, u16 addr)
                 update_coincidence_flag(ppu);
                 break;
         case DMA_ADDR:
-                /* printf("Yep, DMA was written to on cycle %ld!\n", *TICK); */
                 assert(v <= 0xDF); /* TODO: check what happens here? */
                 ppu->dma = v;
                 ppu->dma_requested= true;

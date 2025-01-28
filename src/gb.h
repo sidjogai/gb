@@ -163,10 +163,8 @@ struct ppu {
         u32  palette[4];        /* light to dark; ARGB8888 format */
         u32 *display_buf;       /* user-facing display; ARGB8888 format */
 
-        /*
-           PCNT is only incremented if shift_count has reached SCX & 7.
-           Pushing pixels to LCD is only done when pxiel_count >= 8.
-        */
+        /* PCNT is only incremented if shift_count has reached SCX & 7.
+           Pushing pixels to LCD is only done when pixel_count >= 8. */
 
         u8   shift_count;       /* fifo shift counter (0 - 7) */
         u8   pixel_count;       /* pixel counter (0 - 167) */
@@ -205,12 +203,6 @@ struct ppu {
         bool oam_accessible;
         bool vram_accessible;
 
-        struct sprite {
-                u8 x; /* x position (8 bits) */
-                u8 tile_row; /* tile row 0-15 (4 bits) */
-                u8 sprite_number; /* sprite number 0-39 (6 bits) */
-        } sprites[10];
-
         enum ppu_mode {
                 HBLANK,
                 VBLANK,
@@ -224,12 +216,11 @@ struct ppu {
                 u8 tile_index;
                 u8 attributes;
                 bool seen;
-        } obj_slots[10];
-        int nslots;
+        } obj_buf[10];
+        int obj_buf_len;
 
-        bool sprite_encountered;
-        int obj_index; /* index into obj_slots for current OBJ encountered */
-        bool final_bg_fetch;
+        bool obj_encountered;
+        int  obj_index;         /* index into obj_buf for current OBJ */
 
         struct mem *mem; /* required for OAM DMA */
 };

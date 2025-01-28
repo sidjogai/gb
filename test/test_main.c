@@ -70,6 +70,7 @@ static u64 *FRAME;
 #define LOG_PPU_VRAM_ACCESS 0
 #define LOG_PPU_LCD_TOGGLE  0
 #define LOG_PPU_TEMP   0
+#define LOG_PPU_FIFO   0
 
 
 #define TRACE_CPU 0
