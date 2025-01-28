@@ -187,8 +187,8 @@ struct ppu {
 
         bool prev_stat_line;
 
-        /* ppu is disabled if bit 7 of LCDC is set */
-        bool disabled;
+        /* bit 7 of LCDC is set after being unset */
+        bool lcd_reenabled;
 
         struct fetcher {
                 u8 tile_id;

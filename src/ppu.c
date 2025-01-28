@@ -68,7 +68,7 @@ static void hblank(struct ppu *ppu, u8 *interrupt_flag)
                                 *interrupt_flag |= 1 << 0;
                                 /* printf("triggered vblank interrupt at frame %d tick %d line_delta %d\n", *FRAME, *TICK, ppu->line_delta); */
                         } else {
-                                printf("new scanline at frame %d tick %d line_delta %d\n", *FRAME, *TICK, ppu->line_delta);
+                                printf("new scanline at frame %lld tick %lld line_delta %d\n", *FRAME, *TICK, ppu->line_delta);
                                 start_new_scanline(ppu);
                         }
                         update_mode(ppu);
@@ -102,6 +102,14 @@ static void vblank(struct ppu *ppu, u8 *interrupt_flag)
 
 static void oam_scan(struct ppu *ppu, u8 *interrupt_flag)
 {
+        if (ppu->lcd_reenabled) {
+                if (ppu->line_delta + 4 != 76) {
+                        ppu->lcd_reenabled = false;
+                        goto drawing;
+                }
+                goto done;
+        }
+
         if (ppu->line_delta + 4 != 80)
                 goto done;
 
@@ -130,6 +138,7 @@ static void oam_scan(struct ppu *ppu, u8 *interrupt_flag)
         log_ppu("nslots = %d (sprite height = %d)\n",
                 ppu->nslots, sprite_height);
 
+ drawing:
         ppu->pixel_counter_enabled = false;
         ppu->shift_counter_enabled = false;
         ppu->shift_count = 0;
@@ -455,6 +464,7 @@ static void oam_dma(struct ppu *ppu)
 static bool vram_accessible(enum ppu_mode m)
 {
         /* return true; /\* TODO *\/ */
+        /* return false; */
         return m != DRAWING;
 }
 
@@ -500,14 +510,16 @@ static u8 read_oam(struct ppu *ppu, u16 addr)
         return v;
 }
 
-
 static void sync_ppu(struct ppu *ppu, u8 *interrupt_flag)
 {
-        if (ppu->disabled) {
+        oam_dma(ppu);
+
+        if (!(ppu->lcdc >> 7)) {
                 printf("ppu disabled\n");
                 ppu->ly = 0;
                 ppu->stat &= ~0x3;
                 ppu->line_delta = 0;
+                return;
         }
 
         switch (ppu->mode) {
@@ -524,7 +536,6 @@ static void sync_ppu(struct ppu *ppu, u8 *interrupt_flag)
                 vblank(ppu, interrupt_flag);
                 break;
         }
-        oam_dma(ppu);
 }
 
 
@@ -562,7 +573,7 @@ static bool stat_interrupt_pending(struct ppu *ppu, u8 *interrupt_flag)
         /*        *TICK, ppu->line_delta, *FRAME, statbit, ppu->ly, reason); */
 
         if (interrupt_pending && statbit == 5)
-                printf("fired interrupt for bit %d of stat on frame %d tick %d line delta %d\n", 5, *FRAME, *TICK, ppu->line_delta);
+                printf("fired interrupt for bit %d of stat on frame %lld tick %lld line delta %d\n", 5, *FRAME, *TICK, ppu->line_delta);
         ppu->prev_stat_line = stat_line;
         /* ppu->prev_stat_ly   = ppu->ly; */
         return interrupt_pending;
@@ -592,7 +603,12 @@ static void write_ppu_reg(struct ppu *ppu, u8 v, u16 addr)
         switch(addr) {
         case LCDC_ADDR:
                 log_ppu("lcdc_addr");
-                ppu->disabled = !((v >> 7) & 0x1);
+                if (!(ppu->lcdc >> 7) && (v >> 7)) {
+                        ppu->lcd_reenabled = true;
+                        ppu->mode = OAM_SCAN;
+                }
+                /* if (!((ppu->lcdc >> 7) & 0x1) && ((v >> 7) & */
+                /* ppu->disabled = !((v >> 7) & 0x1); */
                 /* printf("LCD turned off\n"); */
                 /* else */
                 /* printf("LCD turned on\n"); */
