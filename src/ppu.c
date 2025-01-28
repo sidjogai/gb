@@ -372,19 +372,23 @@ static void tick_drawing(struct ppu *ppu, u8 *interrupt_flag);
 
 static int check_obj(struct ppu *ppu)
 {
+        /* TODO: do we need to sort entries here? */
+
+        int obj_index = -1;
         for (int i = 0; i < ppu->nslots; i++) {
                 int x = ppu->obj_slots[i].x;
                 /* TODO: use ppu->pixel_count instead? */
                 if (x >= ppu->lx && x <= ppu->lx + 8) {
-                        if (ppu->obj_slots[i].seen) {
-                                return -1;
-                        } else {
-                                ppu->obj_slots[i].seen = true;
-                                return i;
-                        }
+                        obj_index = i;
+                        /* if (ppu->obj_slots[i].seen) { */
+                        /*         return -1; */
+                        /* } else { */
+                        /*         ppu->obj_slots[i].seen = true; */
+                        /*         return i; */
+                        /* } */
                 }
         }
-        return -1;
+        return obj_index;
 }
 
 static void new_drawing(struct ppu *ppu)
@@ -393,19 +397,48 @@ static void new_drawing(struct ppu *ppu)
 
         /* printf("dots are %d lx is %d\n", ppu->dots_since_scanline_started, ppu->lx); */
 
-        if (!ppu->sprite_encountered && (ppu->obj_index = check_obj(ppu)) != -1) {
+        for (int i = 0; i < ppu->nslots; i++) {
+                int x = ppu->obj_slots[i].x;
+                if (x >= ppu->lx && x <= ppu->lx + 8) {
+                        log_event(TEMP, "found obj with x = %d, id = %d (lx was %d), seen is %d and sprite_encountered is %d ",
+                                  x, ppu->obj_slots[i].tile_index, ppu->lx, ppu->obj_slots[i].seen, ppu->sprite_encountered);
+                }
+        }
+
+        int obj_index = check_obj(ppu);
+
+        log_event(TEMP, "obj index gave %d", obj_index);
+
+        if (obj_index != -1 &&
+            !ppu->sprite_encountered &&
+            !ppu->obj_slots[obj_index].seen) {
+                ppu->obj_slots[obj_index].seen = true;
+                ppu->obj_index = obj_index;
                 do_logging = true;
                 ppu->sprite_encountered = true;
                 log_event(TEMP, "found a sprite, its index was %d", ppu->obj_index);
+
+                if (ppu->active_fetcher == BG_FETCHER && ppu->bg_fetcher.state == PUSH) {
+                        ppu->active_fetcher = OBJ_FETCHER;
+                        ppu->obj_fetcher.state = FETCH_TILE_ID_IDLE; /* TODO: check this! */
+                }
         }
 
+        /* if (!ppu->sprite_encountered && (ppu->obj_index = check_obj(ppu)) != -1) { */
+        /*         do_logging = true; */
+        /*         ppu->sprite_encountered = true; */
+        /*         log_event(TEMP, "found a sprite, its index was %d", ppu->obj_index); */
+
+        /*         if (ppu->active_fetcher == BG_FETCHER && ppu->bg_fetcher.state == PUSH) { */
+        /*                 ppu->active_fetcher = OBJ_FETCHER; */
+        /*                 ppu->obj_fetcher.state = FETCH_TILE_ID_IDLE; /\* TODO: check this! *\/ */
+        /*         } */
+        /* } */
 
         if (ppu->initial_fetch_completed && !ppu->sprite_encountered) {
                 assert(ppu->dots_since_scanline_started >= 86);
 
                 struct fifo_entry bg = pop_fifo(&ppu->bg_fifo);
-
-                log_event(TEMP, "pop!");
 
                 struct fifo_entry obj;
 
@@ -413,9 +446,11 @@ static void new_drawing(struct ppu *ppu)
 
                 if (ppu->obj_fifo.len > 0) {
                         obj = pop_fifo(&ppu->obj_fifo);
-                        log_event(TEMP, "pop obj!");
                         use_obj = true;
                 }
+
+                log_event(FIFO, "FIFOs clocked: BG len = %d; OBJ len = %d",
+                          ppu->bg_fifo.len, ppu->obj_fifo.len);
 
                 if (!ppu->scx_pixels_dropped)
                         if (ppu->shift_count++ >= (ppu->scx & 0x7))
@@ -445,73 +480,82 @@ static void new_drawing(struct ppu *ppu)
                 }
         }
 
-        if (!ppu->sprite_encountered && (ppu->obj_index = check_obj(ppu)) != -1) {
-                do_logging = true;
-                ppu->sprite_encountered = true;
-                log_event(TEMP, "found a sprite, its index was %d", ppu->obj_index);
+        // FCNT == 5 so go to sprite fetch at once */
+        if (ppu->active_fetcher == BG_FETCHER &&
+            ppu->sprite_encountered &&
+            ppu->bg_fetcher.state == PUSH) {
+                ppu->active_fetcher = OBJ_FETCHER;
+                ppu->obj_fetcher.state = FETCH_TILE_ID_IDLE;
+                exit(1);
         }
 
         if (ppu->active_fetcher == BG_FETCHER) {
+
                 switch(ppu->bg_fetcher.state) {
                 case FETCH_TILE_ID_IDLE: // 80, 86
+                        log_event(FIFO, "BG - FETCH_TILE_ID_IDLE");
                         ppu->bg_fetcher.state = FETCH_TILE_ID;
                         break;
                 case FETCH_TILE_ID: // 81, 87
+                        log_event(FIFO, "BG - FETCH_TILE_ID");
                         fetch_bg_tile_id(ppu);
                         ppu->bg_fetcher.state = FETCH_BITPLANE0_IDLE;
                         break;
                 case FETCH_BITPLANE0_IDLE: // 82, 88
+                        log_event(FIFO, "BG - FETCH_BITPLANE0_IDLE");
                         ppu->bg_fetcher.state = FETCH_BITPLANE0;
                         break;
                 case FETCH_BITPLANE0: // 83, 89
+                        log_event(FIFO, "BG - FETCH_BITPLANE0");
                         fetch_bg_bitplane0(ppu);
                         ppu->bg_fetcher.state = FETCH_BITPLANE1_IDLE;
                         break;
                 case FETCH_BITPLANE1_IDLE: // 84, 80
+                        log_event(FIFO, "BG - FETCH_BITPLANE1_IDLE");
                         ppu->bg_fetcher.state = FETCH_BITPLANE1;
                         break;
                 case FETCH_BITPLANE1: // 85, 91
+                        log_event(FIFO, "BG - FETCH_BITPLANE1");
                         fetch_bg_bitplane1(ppu);
+
                         if (!ppu->initial_fetch_completed) {
                                 load_bg_fifo(ppu);
-
                                 ppu->initial_fetch_completed = true;
                                 ppu->bg_fetcher.state = FETCH_TILE_ID_IDLE;
-                        } else {
-                                if (ppu->sprite_encountered) {
-                                        log_event(TEMP, "fcnt==5, switched to obj fetcher");
-                                        /* FCNT == 5, now we do the sprite fetch */
-                                        ppu->active_fetcher = OBJ_FETCHER;
-                                        ppu->obj_fetcher.state = FETCH_TILE_ID_IDLE;
-                                        /* log_event(TEMP, "active fetcher now obj fetcher"); */
-
-                                        /* when we finish the sprite fetch out
-                                           of this we do a push */
-                                        ppu->bg_fetcher.state = PUSH;
-                                } else {
-                                        ppu->bg_fetcher.state = PUSH;
-                                }
+                                break;
                         }
+
+                        if (ppu->sprite_encountered) {
+                                /* NOTE: FETCH_TILE_ID as first sprite cycle
+                                   overlaps the last background cycle. */
+                                log_event(FIFO, "sprite fetch done");
+                                ppu->active_fetcher = OBJ_FETCHER;
+                                ppu->obj_fetcher.state = FETCH_TILE_ID;
+                        }
+
+                        ppu->bg_fetcher.state = PUSH;
                         break;
                 case PUSH:
-                        assert(!ppu->sprite_encountered);
                         if (!ppu->sprite_encountered) {
                                 if (ppu->bg_fifo.len == 0) {
                                         load_bg_fifo(ppu);
                                         ppu->bg_fetcher.state = FETCH_TILE_ID_IDLE;
+                                        log_event(FIFO, "BG - PUSH (succeeded)");
                                 } else {
+                                        log_event(FIFO, "BG - PUSH (attempted)");
+
                                         /* will try again next time */
                                         /* log_event(TEMP, "will try again next time"); */
                                 }
                         } else {
                                 if (ppu->bg_fifo.len == 0) {
-                                        log_event(TEMP, "weirddddddddd 111!");
+                                        log_event(FIFO, "weirddddddddd 111!");
                                         load_bg_fifo(ppu);
                                         ppu->bg_fetcher.state = FETCH_TILE_ID_IDLE;
                                         ppu->active_fetcher = OBJ_FETCHER;
                                         ppu->obj_fetcher.state = FETCH_TILE_ID_IDLE;
                                 } else {
-                                        log_event(TEMP, "weirddddddddd 222!");
+                                        log_event(FIFO, "weirddddddddd 222!");
                                         ppu->bg_fetcher.state = PUSH;
                                         ppu->active_fetcher = OBJ_FETCHER;
                                         ppu->obj_fetcher.state = FETCH_TILE_ID_IDLE;
@@ -522,52 +566,44 @@ static void new_drawing(struct ppu *ppu)
         } else {
                 switch(ppu->obj_fetcher.state) {
                 case FETCH_TILE_ID_IDLE: // 80, 86
+                        log_event(FIFO, "OBJ - FETCH_TILE_ID_IDLE");
                         ppu->obj_fetcher.state = FETCH_TILE_ID;
                         break;
                 case FETCH_TILE_ID: // 81, 87
+                        log_event(FIFO, "OBJ - FETCH_TILE_ID");
                         fetch_obj_tile_id(ppu);
                         ppu->obj_fetcher.state = FETCH_BITPLANE0_IDLE;
-                        log_event(TEMP, "obj fetch tile id ");
                         break;
                 case FETCH_BITPLANE0_IDLE: // 82, 88
+                        log_event(FIFO, "OBJ - FETCH_BITPLANE0_IDLE");
                         ppu->obj_fetcher.state = FETCH_BITPLANE0;
                         break;
                 case FETCH_BITPLANE0: // 83, 89
+                        log_event(FIFO, "OBJ - FETCH_BITPLANE0");
                         fetch_obj_bitplane0(ppu);
                         ppu->obj_fetcher.state = FETCH_BITPLANE1_IDLE;
-                        log_event(TEMP, "obj bitplane 0");
                         break;
                 case FETCH_BITPLANE1_IDLE: // 84, 80
-                        /* log_event(TEMP, TEMP, "one!"); */
+                        log_event(FIFO, "OBJ - FETCH_BITPLANE1_IDLE");
                         ppu->obj_fetcher.state = FETCH_BITPLANE1;
                         break;
                 case FETCH_BITPLANE1: // 85, 91
+                        log_event(FIFO, "OBJ - FETCH_BITPLANE1");
                         ppu->obj_fifo.len = 0;
                         fetch_obj_bitplane1(ppu);
                         ppu->obj_fetcher.state = PUSH;
-                        log_event(TEMP, "obj bitplane 1");
-                        break;
-                case PUSH:
+
+                        /* TODO: check this */
+                        log_event(FIFO, "OBJ - PUSH");
+
                         load_obj_fifo(ppu);
                         ppu->sprite_encountered = false;
-                        log_event(TEMP, "sprite encountered = false");
-                        ppu->obj_fetcher.state = FETCH_TILE_ID_IDLE; /* not needed ? */
+                        ppu->obj_fetcher.state = FETCH_TILE_ID_IDLE;
                         ppu->active_fetcher = BG_FETCHER;
-                        log_event(TEMP, "load obj fifo (push step)");
-                        /* log_event(TEMP, "obj bitplane1 fetched + pushed"); */
-                        /* I guess this is instant? */
                         break;
-                        /*         /\* log_event(TEMP, "came ehre!"); *\/ */
-                        /*         ppu->obj_fetcher.state = PUSH; */
-                        /*         /\* exit(0); *\/ */
-                        /*         break; */
-                        /* case PUSH: */
-                        /*         /\* just for now, assume no overlapping obj fetches *\/ */
-                        /*         load_obj_fifo(ppu); */
-                        /*         /\* ppu->obj_fetcher.state = FETCH_TILE_ID_IDLE; /\\* not really needed *\\/ *\/ */
-                        /*         /\* ppu->active_fetcher. *\/ */
-                        /* break */
-
+                case PUSH:
+                        assert(false);
+                        break;
                 }
         }
 }

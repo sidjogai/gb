@@ -31,7 +31,9 @@ static u32 palettes[][4] = {
 
 /* ============================= Debug options ============================== */
 
-#define PPU_LOGGING_ENABLED 1 /* Whether any PPU logging is enabled */
+#ifndef PPU_LOGGING_ENABLED
+#define PPU_LOGGING_ENABLED 0 /* Whether any PPU logging is enabled */
+#endif
 
 #define LOG_PPU_LYC_WRITE   0 /* LYC register written to */
 #define LOG_PPU_BGP_WRITE   0 /* BGP register written to */
@@ -41,6 +43,7 @@ static u32 palettes[][4] = {
 #define LOG_PPU_VBLANK_IRQ  0 /* VBlank interrupt requested */
 #define LOG_PPU_STAT_IRQ    0 /* STAT interrupt requested */
 #define LOG_PPU_MODE_SWITCH 0 /* PPU mode switched */
+#define LOG_PPU_FIFO        1 /* FIFO action, e.g. Fetch Tile ID, push, etc. */
 #define LOG_PPU_TEMP 1
 
 #define LOG_PPU_OAM_ACCESS  0 /* OAM read/write access changed */
