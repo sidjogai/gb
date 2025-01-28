@@ -238,7 +238,7 @@ int main(int argc, char *argv[])
 
                 u64 gb_t0 = clock_ns();
 
-                while(gb.cpu.tick <= frame * 70224)
+                while(gb.cpu.tick <= frame * (70224 / 4))
                         step_cpu(&gb.cpu);
 
                 int gb_fps = 1000000000 / (clock_ns() - gb_t0);

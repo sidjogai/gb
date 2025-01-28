@@ -94,7 +94,8 @@ int main(int argc, char *argv[])
 
         if (argc > 2 && strcmp(argv[2], "-q") == 0) {
                 for (;;) {
-                        step_cpu(&gb.cpu);
+                        /* for (int i = 0; i < (70224 / 4); i++) */
+                                step_cpu(&gb.cpu);
                         early_exit(&gb.cpu);
                 }
         }

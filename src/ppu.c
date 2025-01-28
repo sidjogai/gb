@@ -1,5 +1,5 @@
 #define dbg(...) do {                                           \
-                printf("tick = %lld ", *TICK / 4);                  \
+                printf("tick = %lld ", *TICK);                  \
                 printf("[%s, oam blocking %s] ", __func__, ppu->oam_access_blocked ? "ON" : "OFF"); \
                 printf(__VA_ARGS__);                            \
         } while(0)
@@ -10,27 +10,33 @@
 /* static bool ppu_loggin_enabled = true; */
 static bool ppu_loggin_enabled = false;
 
+#define GB_LOG_PPU
 #ifdef GB_LOG_PPU
 #define log_ppu(...)                                    \
         do {                                            \
                 if (!ppu_loggin_enabled)                \
                         break;                          \
                 printf("mode = %-8s; "                  \
-                       "delta = %-3d; "                 \
+                       "tick = %-3lld; "                \
+                       "FCNT = %-3d; "                  \
+                       "SCNT = %-3d; "                  \
+                       "PCNT = %-3d; "                  \
                        "ly = %-3d; "                    \
                        "lx = %-3d; "                    \
-                       "pixelcount = %-3d"              \
                        "        %s:%-3d:%-22s        ", \
                        ppu_mode_name(ppu->mode),        \
-                       ppu->line_delta,                 \
+                       *TICK * 4,                       \
+                       ppu->fetch_count,                \
+                       ppu->shift_count,                \
+                       ppu->pixel_count,                \
                        ppu->ly,                         \
                        ppu->lx,                         \
-                       ppu->new.pixelcount,             \
                        &__FILE__[2],                    \
                        __LINE__,                        \
                        __func__                         \
                        );                               \
                 fprintf(stdout, __VA_ARGS__);           \
+                putchar('\n');                          \
         } while(0)
 #else
 #define log_ppu(...) ;
@@ -92,9 +98,14 @@ static void switch_to_mode(struct ppu *ppu, enum ppu_mode m, u8 *interrupt_flag)
                 ppu->lx         = 0;
                 break;
         case DRAWING:
+
+                ppu->pixel_counter_enabled = false;
+                ppu->fifos_been_pushed_to = false;
+                ppu->fetch_count = ppu->shift_count = ppu->pixel_count = 0;
+
+
                 ppu->mode = DRAWING;
                 ppu->active_fetcher = BG_FETCHER;
-                memset(&ppu->new, 0, sizeof ppu->new);
                 memset(&ppu->obj_fifo, 0, sizeof ppu->obj_fifo);
                 memset(&ppu->bg_fifo, 0, sizeof ppu->bg_fifo);
                 memset(&ppu->obj_fetcher, 0, sizeof ppu->obj_fetcher);
@@ -222,37 +233,10 @@ static void push_to_fifo(struct fifo *fifo, struct fifo_entry e)
         fifo->len++;
 }
 
-static void clock_fifos(struct ppu *ppu)
-{
-        if (ppu->new.obj_fetch_underway)
-                return;
-
-        struct fifo_entry bg = pop_fifo(&ppu->bg_fifo);
-
-        if (ppu->obj_fifo.len > 0) {
-                bg = pop_fifo(&ppu->obj_fifo);
-                /* Q; */
-        }
-
-        if (ppu->new.pixelcount < 8)
-                log_ppu("popped; pixelcount = %d; bg_fifo_len = %d\n",
-                        ppu->new.pixelcount, ppu->bg_fifo.len);
-
-        if (ppu->new.pixelcount >= 8 && ppu->new.pixelcount <= 167) {
-                int pos = ppu->ly * 160 + ppu->lx;
-                ppu->display_buf[pos] = ppu->palette[bg.color];
-                ppu->lx++;
-                log_ppu("displayed; pixelcount = %d; bg_fifo_len = %d\n",
-                        ppu->new.pixelcount, ppu->bg_fifo.len);
-        }
-
-        ppu->new.pixelcount++;
-}
-
 static void fetch_bg_tile_id(struct ppu *ppu)
 {
         u8 n = (ppu->lcdc >> 3) & 1;
-        u8 x = ppu->scx + (ppu->new.pixelcount / 8);
+        u8 x = (ppu->scx + ppu->pixel_count) / 8;
         u8 y = (ppu->ly + ppu->scy) & 0xF8;
 
         u16 offset = 0x1800 | n << 10 | y << 2 | x;
@@ -261,62 +245,40 @@ static void fetch_bg_tile_id(struct ppu *ppu)
         assert(vram_offset_to_addr(offset) >= TILEMAP1_START &&
                vram_offset_to_addr(offset) <= TILEMAP2_END);
 
-        log_ppu("fetch #%d; offset = %x; tile_no = %d\n",
-                ppu->new.nfetch++, offset, ppu->obj_fetcher.tile_id);
-
         ppu->bg_fetcher.tile_id = ppu->vram[offset];
-        ppu->bg_fetcher.state = FETCH_BITPLANE0;
 }
 
-static void fetch_obj_tile_id(struct ppu *ppu)
+static u16 bitplane_formula(struct ppu *ppu, u8 tile_id)
 {
-        assert(ppu->cur_obj != NULL);
 
-        log_ppu("tile number was %d\n", ppu->cur_obj->tile_index);
+        u16 offset = 0;
+        offset |= !((ppu->lcdc & 0x10) || (tile_id & 0x80)) << 12;
+        offset |= tile_id << 4;
+        offset |= ((ppu->ly + ppu->scy) & 0x7) << 1;
 
+        /* u16 offset = (ppu->lcdc & (1 << 4)) ? */
+        /*         (tile_id << 4) | (((ppu->ly + ppu->scy) & 0x7) << 1) : */
+        /*         (0x1000 - (tile_id << 4)) | (((ppu->ly + ppu->scy) & 0x7) << 1); */
 
-        ppu->obj_fetcher.tile_id = ppu->cur_obj->tile_index;
-        ppu->obj_fetcher.state = FETCH_BITPLANE0;
+        return offset;
 }
 
 static void fetch_bg_bitplane0(struct ppu *ppu)
 {
         u8 tile_id = ppu->bg_fetcher.tile_id;
-        u16 offset = (ppu->lcdc & (1 << 4)) ?
-                (tile_id << 4) | (((ppu->ly + ppu->scy) & 0x7) << 1) :
-                (0x1000 - (tile_id << 4)) | (((ppu->ly + ppu->scy) & 0x7) << 1);
+        u16 offset = bitplane_formula(ppu, tile_id);
 
         assert(vram_offset_to_addr(offset) >= TILE_DATA_START &&
                vram_offset_to_addr(offset) <= TILE_DATA_END);
         log_ppu("offset = %x; bitplane = %d\n", offset, ppu->vram[offset]);
 
         ppu->bg_fetcher.bitplane0 = ppu->vram[offset];
-        ppu->bg_fetcher.state = FETCH_BITPLANE1;
-}
-
-static void fetch_obj_bitplane0(struct ppu *ppu)
-{
-        /* TODO: attributes, etc. */
-        u8 tile_id = ppu->obj_fetcher.tile_id;
-        u16 offset = (ppu->lcdc & (1 << 4)) ?
-                (tile_id << 4) | (((ppu->ly + ppu->scy) & 0x7) << 1) :
-                (0x1000 - (tile_id << 4)) | (((ppu->ly + ppu->scy) & 0x7) << 1);
-
-        assert(vram_offset_to_addr(offset) >= TILE_DATA_START &&
-               vram_offset_to_addr(offset) <= TILE_DATA_END);
-        log_ppu("offset = %x; bitplane = %d\n", offset, ppu->vram[offset]);
-
-        ppu->obj_fetcher.bitplane0 = ppu->vram[offset];
-        ppu->obj_fetcher.state = FETCH_BITPLANE1;
 }
 
 static void fetch_bg_bitplane1(struct ppu *ppu)
 {
         u8 tile_id = ppu->bg_fetcher.tile_id;
-        u16 offset = 1;
-        offset |= (ppu->lcdc & (1 << 4)) ?
-                (tile_id << 4) | (((ppu->ly + ppu->scy) & 0x7) << 1) :
-                (0x1000 - (tile_id << 4)) | (((ppu->ly + ppu->scy) & 0x7) << 1);
+        u16 offset = 1 + bitplane_formula(ppu, tile_id);
 
         assert(vram_offset_to_addr(offset) >= TILE_DATA_START &&
                vram_offset_to_addr(offset) <= TILE_DATA_END);
@@ -326,26 +288,9 @@ static void fetch_bg_bitplane1(struct ppu *ppu)
         ppu->bg_fetcher.state = PUSH;
 }
 
-static void fetch_obj_bitplane1(struct ppu *ppu)
+static void load_bg_fifo(struct ppu *ppu)
 {
-        /* TODO: attributes, etc. */
-        u8 tile_id = ppu->obj_fetcher.tile_id;
-        u16 offset = 1;
-        offset |= (ppu->lcdc & (1 << 4)) ?
-                (tile_id << 4) | (((ppu->ly + ppu->scy) & 0x7) << 1) :
-                (0x1000 - (tile_id << 4)) | (((ppu->ly + ppu->scy) & 0x7) << 1);
-
-        assert(vram_offset_to_addr(offset) >= TILE_DATA_START &&
-               vram_offset_to_addr(offset) <= TILE_DATA_END);
-        log_ppu("offset = %x; bitplane = %d\n", offset, ppu->vram[offset]);
-
-        ppu->obj_fetcher.bitplane1 = ppu->vram[offset];
-        ppu->obj_fetcher.state = PUSH;
-}
-
-static void push_to_bg_fifo(struct ppu *ppu)
-{
-        if (ppu->bg_fifo.len == 0) {
+      if (ppu->bg_fifo.len == 0) {
                 struct fifo_entry e;
                 for (int bit = 7; bit >= 0; bit--) {
                         u8 low    = ((ppu->bg_fetcher.bitplane0 >> bit) & 1);
@@ -354,157 +299,111 @@ static void push_to_bg_fifo(struct ppu *ppu)
                         e.palette = 4; /* NOTE! */
                         push_to_fifo(&ppu->bg_fifo, e);
                 }
-                log_ppu("pushed 8 pixels\n");
-                assert(ppu->bg_fifo.len = 8);
-
-                if (ppu->new.obj_fetch_underway) {
-                        ppu->obj_fetcher.state = FETCH_TILE_ID;
-                        ppu->bg_fetcher.state  = FETCH_TILE_ID;
-                        ppu->active_fetcher    = OBJ_FETCHER;
-                        ppu_loggin_enabled     = true;
-                } else {
-                        ppu->bg_fetcher.state = FETCH_TILE_ID;
-                }
-
-        } else if (ppu->new.obj_fetch_underway) {
-                /* NOTE: */
-                ppu->active_fetcher    = OBJ_FETCHER;
-                ppu->bg_fetcher.state  = PUSH;
-                ppu->obj_fetcher.state = FETCH_TILE_ID;
-                ppu_loggin_enabled     = true;
-        }
-
+      }
 }
 
-static void push_to_obj_fifo(struct ppu *ppu)
+/* static void increment_shift_count(struct ppu *ppu) */
+/* { */
+/*         if (++ppu->shift_count == (ppu->scx & 0x7)) */
+/*                 ppu->fine_x_scroll_done = true; */
+/* } */
+
+/* static void increment_pixel_count(struct ppu *ppu) */
+/* { */
+/*         if (ppu->fine_x_scroll_done) */
+/*                 ppu->pixel_count++; */
+/* } */
+
+static void tick_drawing(struct ppu *ppu, u8 *interrupt_flag);
+
+static void clock_fifos(struct ppu *ppu)
 {
-        /* TODO: pixel mixing! */
-        ppu->obj_fifo.len = 0;
-        struct fifo_entry e;
-        for (int bit = 7; bit >= 0; bit--) {
-                u8 low    = ((ppu->obj_fetcher.bitplane0 >> bit) & 1);
-                u8 high   = ((ppu->obj_fetcher.bitplane1 >> bit) & 1);
-                e.color   = (u8)(low | high << 1);
-                e.palette = 4; /* NOTE! */
-                push_to_fifo(&ppu->obj_fifo, e);
-        }
-        ppu->obj_fetcher.state = FETCH_TILE_ID;
-        ppu->active_fetcher = BG_FETCHER;
-        ppu->new.obj_fetch_underway = false;
-}
-
-static struct obj * sprite_hit(struct ppu *ppu)
-{
-        struct obj *p = ppu->obj_slots;
-        /* TODO: bounds */
-        for (struct obj *obj = p; obj < p + ppu->nslots; obj++)
-                if (obj->x >= ppu->lx && obj->x <= ppu->lx + 8) {
-                        if (!obj->seen) {
-                                obj->seen = true;
-                                /* printf("obj with x=%d, y=%d not seen, adding!\n",  */
-                                /*        obj->x, obj->y); */
-                                Q;
-                                return obj;
-                        } else {
-                                /* printf("skipping obj with x=%d, y=%d as it is seen\n",  */
-                                /*        obj->x, obj->y); */
-                        }
-                }
-        return NULL;
-}
-
-                /* if ((ppu->cur_obj = sprite_hit(ppu)) != NULL)           \ */
-                /*         ppu->new.obj_fetch_underway = true;             \ */
-
-
-#define CLOCK(n)                                                        \
-        for (int i = 0; i < n; i++) {                                   \
-                clock_fifos(ppu);                                       \
-                if (ppu->lx >= 160)                                     \
-                        goto hblank;                                    \
+        /* TODO: sprites */
+        if (!ppu->fifos_been_pushed_to || ppu->bg_fifo.len == 0) {
+                return;
         }
 
-static int fetcher_state_duration(enum fetcher_state s)
-{
-        return s == PUSH ? 1 : 2;
+        struct fifo_entry bg = pop_fifo(&ppu->bg_fifo);
+
+        ppu->shift_count++;
+
+        if (ppu->pixel_count < 8) {
+                log_ppu("did pop but less now");
+                return;
+        }
+
+        int pos = ppu->ly * 160 + ppu->lx;
+        ppu->display_buf[pos] = ppu->palette[bg.color];
+        ppu->lx++;
+        log_ppu("displayed");
 }
 
 static void drawing(struct ppu *ppu, u8 *interrupt_flag)
 {
-#define tick(n) do { ppu->line_delta += n; left -= n; } while (0)
-
-        /* assert(ppu->line_delta % 4 == 0); */
-
-        int d    = ppu->line_delta - 80;
-        int left = 4 + ppu->new.q;
-        ppu->new.q = 0;
-
-        if (d == 0) {
-                /* B */
-                fetch_bg_tile_id(ppu);
-                ppu->line_delta += 2;
-
-                /* 0 */
-                fetch_bg_bitplane0(ppu);
-                ppu->line_delta += 2;
-                return;
-        } else if (d == 4) {
-                /* 1 */
-                fetch_bg_bitplane1(ppu);
-                push_to_bg_fifo(ppu); /* FIFO empty; instant push */
-                tick(2);
-
-                ppu->bg_fetcher.state = FETCH_TILE_ID;
+        assert(ppu->active_fetcher == BG_FETCHER);
+        for (int i = 0; i < 4; i++, ppu->line_delta++) {
+                if (ppu->shift_count == (ppu->scx & 7))
+                        ppu->pixel_counter_enabled = true;
+                tick_drawing(ppu, interrupt_flag);
+                clock_fifos(ppu);
+                if (ppu->pixel_counter_enabled)
+                        ppu->pixel_count++;
+                if (ppu->lx == 160)
+                        goto hblank;
         }
 
- start:;
-        if (ppu->active_fetcher != BG_FETCHER)
-                Q;
+        return;
+ hblank:
+        switch_to_mode(ppu, HBLANK, interrupt_flag);
+}
 
-
+static void tick_drawing(struct ppu *ppu, u8 *interrupt_flag)
+{
         switch (ppu->bg_fetcher.state) {
+        case FETCH_TILE_ID_IDLE:
+                ppu->bg_fetcher.state = FETCH_TILE_ID;
+                ppu->fetch_count++;
+                break;
         case FETCH_TILE_ID:
                 fetch_bg_tile_id(ppu);
-                CLOCK(2);
-                tick(2);
+                log_ppu("Fetch tile ID done");
+                ppu->bg_fetcher.state = FETCH_BITPLANE0_IDLE;
+                ppu->fetch_count++;
+                break;
+        case FETCH_BITPLANE0_IDLE:
+                ppu->bg_fetcher.state = FETCH_BITPLANE0;
+                ppu->fetch_count++;
                 break;
         case FETCH_BITPLANE0:
                 fetch_bg_bitplane0(ppu);
-                CLOCK(2);
-                tick(2);
+                ppu->bg_fetcher.state = FETCH_BITPLANE1_IDLE;
+                ppu->fetch_count++;
+                break;
+        case FETCH_BITPLANE1_IDLE:
+                ppu->bg_fetcher.state = FETCH_BITPLANE1;
+                ppu->fetch_count++;
                 break;
         case FETCH_BITPLANE1:
                 fetch_bg_bitplane1(ppu);
-                CLOCK(2);
-                tick(2);
+                
+                ppu->fetch_count = 0;
+                if (ppu->fifos_been_pushed_to) {
+                        ppu->bg_fetcher.state = PUSH;
+                } else {
+                        ppu->bg_fetcher.state = FETCH_TILE_ID_IDLE;
+                        ppu->fifos_been_pushed_to = true;
+                }
                 break;
         case PUSH:
-                CLOCK(1);
-                tick(1);
-
-                push_to_bg_fifo(ppu); /* kind of the wrong order */
-
+                if (ppu->bg_fifo.len == 0) {
+                        load_bg_fifo(ppu);
+                        ppu->bg_fetcher.state = FETCH_TILE_ID_IDLE;
+                } else{
+                        ;
+                }
                 break;
-        case FETCH_BITPLANE0_IDLE:
-        case FETCH_BITPLANE1_IDLE:
-        case FETCH_TILE_ID_IDLE:
-                die("1\n");
         }
-
-        goto start;
-        return;
-
- hblank:
-        switch_to_mode(ppu, HBLANK, interrupt_flag);
-
-        return;
-
- /* done: */
-        if (left != 0) {
-                ppu->new.q = left;
-                tick(left);
-        }
-        return;
+ 
 }
 
 static void vblank(struct ppu *ppu, u8 *interrupt_flag)
@@ -635,8 +534,6 @@ static void write_ppu_reg(struct ppu *ppu, u8 v, u16 addr)
                 ppu->scy = v;
                 break;
         case SCX_ADDR:
-                if (v != 0)
-                        Q;
                 ppu->scx = v;
                 break;
         case LY_ADDR:

@@ -177,20 +177,13 @@ struct ppu {
         u32  palette[4];        /* light to dark; ARGB8888 format */
         u32 *display_buf;       /* user-facing display; ARGB8888 format */
 
-        struct nl {
-                fetcher cur_fetcher;
-                u8 fetch_count; /* fetch counter (0 - 5) */
-                u8 shift_count; /* fifo shift counter (0 - 7) */
-                u8 pixel_count; /* pixel counter (0 - 167) */
-        } nl;
+        u8   fetch_count;       /* fetch counter (0 - 5) */
+        u8   shift_count;       /* fifo shift counter (0 - 7) */
+        u8   pixel_count;       /* pixel counter (0 - 167) */
 
-        struct new {
-                int pixelcount;
-                int nfetch; /* times a tile fetch occured; debugging only */
-                bool obj_fetch_underway;
-                struct obj *cur_obj; /* object for which tile fetch underway */
-                int q;
-        } new;
+        /* pixel count is only incremented if shift count has reached SCX & 7 */
+        bool pixel_counter_enabled;
+        bool fifos_been_pushed_to;
 
         struct fetcher {
                 u8 tile_id;
@@ -219,12 +212,7 @@ struct ppu {
                 /* bool active; /\* whether pixels are popped from fifo each dot *\/ */
         } bg_fifo, obj_fifo;
 
-        struct obj *cur_obj;
-
-        struct mem *mem; /* required for OAM DMA */
-
         t_cycle line_delta; /* dots elapsed since scan line started */
-
 
         enum ppu_mode {
                 HBLANK,
@@ -241,6 +229,8 @@ struct ppu {
                 bool seen;
         } obj_slots[10];
         int nslots;
+
+        struct mem *mem; /* required for OAM DMA */
 };
 
 static void sync_ppu(struct ppu *, u8 *interrupt_flag);
