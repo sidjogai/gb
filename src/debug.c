@@ -92,9 +92,9 @@ static u8 * get_tile(struct ppu *ppu, u8 i)
         return signed_method ? tile_addr + 0x1000 : tile_addr;
 }
 
-static void draw_bg_map(struct ppu *ppu, u32 buf[])
+static void draw_tilemap_0x9800(struct ppu *ppu, u32 buf[])
 {
-        u8 *tile = ppu->vram + (ppu->lcdc & (1 << 3) ? 0x1C00 : 0x1800);
+        u8 *tile = ppu->vram + 0x1800;
 
         for (int i = 0; i < 32 * 32; i++)
                 draw_tile(get_tile(ppu, *tile++), buf, i, 256, ppu->palette);
@@ -102,11 +102,9 @@ static void draw_bg_map(struct ppu *ppu, u32 buf[])
         draw_viewport_border(ppu, buf, ppu->palette[3]);
 }
 
-/* =========================== window map viewer ============================ */
-
-static void draw_window_map(struct ppu *ppu, u32 buf[])
+static void draw_tilemap_0x9C00(struct ppu *ppu, u32 buf[])
 {
-        u8 *tile = ppu->vram + (ppu->lcdc & (1 << 6) ? 0x1C00 : 0x1800);
+        u8 *tile = ppu->vram + 0x1C00;
 
         for (int i = 0; i < 32 * 32; i++)
                 draw_tile(get_tile(ppu, *tile++), buf, i, 256, ppu->palette);

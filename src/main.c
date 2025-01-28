@@ -264,10 +264,10 @@ int main(int argc, char *argv[])
                         draw_tile_data(&gb.ppu, windows[TILE_DATA].buf);
 
                 if (windows[BG_MAP].shown)
-                        draw_bg_map(&gb.ppu, windows[BG_MAP].buf);
+                        draw_tilemap_0x9800(&gb.ppu, windows[BG_MAP].buf);
 
                 if (windows[WINDOW_MAP].shown)
-                        draw_window_map(&gb.ppu, windows[WINDOW_MAP].buf);
+                        draw_tilemap_0x9C00(&gb.ppu, windows[WINDOW_MAP].buf);
 
                 if (windows[SPRITES].shown)
                         draw_sprites(&gb.ppu, windows[SPRITES].buf, palette);

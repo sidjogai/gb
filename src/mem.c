@@ -62,7 +62,6 @@ static void write_mem(struct mem *mem, u8 v, u16 addr)
                 mem->hram[addr - HRAM_START] = v;
         else if (addr == 0xFFFF) {
                 mem->int_enable = v;
-                printf("writing you %x\n", mem->int_enable);
         } else
                 die("write_mem: invalid address $%.04x", addr);
 }
@@ -126,7 +125,6 @@ static u8 read_mem(struct mem *mem, u16 addr)
                 v = mem->hram[addr - HRAM_START];
         else if (addr == 0xFFFF) {
                 v = mem->int_enable;
-                printf("Giving you %x\n", v);
         } else
                 die("read_mem: invalid address $%.04x", addr);
         return v;

@@ -185,7 +185,9 @@ struct ppu {
         /* pixel count only incremented if shift count has reached SCX & 7 */
         bool pixel_counter_enabled;
 
-        bool initial_pixels_dropped;
+        bool scx_pixels_dropped; /* whether initial scx % 8 pixels dropped */
+
+        bool initial_fetch_completed; /* whether initial B01 completed */
 
         u8 initial_delay; /* delay of 8 at the start of a scanline */
 
@@ -225,14 +227,13 @@ struct ppu {
 
         t_cycle line_delta; /* dots elapsed since scan line started */
         int dots_since_scanline_started;
+        int dots_since_frame_started; /* only for assert */
 
         struct sprite {
                 u8 x; /* x position (8 bits) */
                 u8 tile_row; /* tile row 0-15 (4 bits) */
                 u8 sprite_number; /* sprite number 0-39 (6 bits) */
         } sprites[10];
-
-        bool in_first_fetch;
 
         enum ppu_mode {
                 HBLANK,
@@ -311,6 +312,7 @@ static void load_rom(struct gameboy *gb, const char *filename);
 
 /* ================================ debug.c ================================= */
 
-static void draw_bg_map(struct ppu *, u32 buf[]);
+static void draw_tilemap_0x9C00(struct ppu *ppu, u32 buf[]);
+static void draw_tilemap_0x9800(struct ppu *ppu, u32 buf[]);
 static void draw_tile_data(struct ppu *, u32 buf[]);
 static void draw_info(int fps, u32 *buf, int w, int h, u32 *palette, struct gameboy *gb);

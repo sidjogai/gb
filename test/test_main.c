@@ -34,6 +34,7 @@ static u64 *FRAME;
 
 #define SUCCESS_CODE 11
 #define FAILURE_CODE 13
+#define TIMEOUT_CODE 15
 #define ASSERT_FAILURE_CODE 15
 
 #define len(a) ((int)(sizeof(a) / sizeof(*a)))
@@ -73,7 +74,7 @@ static void test_mooneye(struct cpu *cpu)
         u64 frame = 1;
         FRAME = &frame;
 
-        for (;;) {
+        for (u64 n = 0; n < 1000000 ; n++) {
                 step_cpu(&gb.cpu);
                 /* jr -2 */
                 bool inf_loop = read_mem(cpu->mem, cpu->regs.pc) == 0x18&&
@@ -88,12 +89,13 @@ static void test_mooneye(struct cpu *cpu)
                                 exit(FAILURE_CODE);
                 }
         }
+        exit(3);
 }
 
 int main(int argc, char *argv[])
 {
         char *rom = argv[1];
-        
+
         init_gb(&gb, gb_buf, palette, external_ram, rom_buf);
         TICK = &gb.cpu.tick;
 

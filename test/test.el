@@ -42,11 +42,16 @@
   (pcase return-code
     (11 "PASS")
     (13 "FAIL")
+    (15 "TIMEOUT")
     (_ "CRASH")))
+
+(defface gb-passed-test
+  '((t (:background "green" :foreground "black")))
+  "Face for passed test")
 
 (defface gb-failed-test
   '((t (:background "red" :foreground "white")))
-  "Background for failed test")
+  "Face for failed test")
 
 (defun gb-test-results-map ()
   (let ((m (make-sparse-keymap)))
@@ -69,7 +74,7 @@
 	 (path (string-replace "mooneye/" "" (file-name-sans-extension test)))
 	 (url (format "https://github.com/Gekkio/mooneye-test-suite/blob/main/%s.s" path)))
     (browse-url url)))
-    
+
 (defun gb-test-mooneye ()
   (interactive)
   (if (not (eq (gb-run-cmd "make") 0))
@@ -84,10 +89,11 @@
 		    count
 		    (let* ((return-code (gb-run-cmd "./gb-test %s --mooneye" rom-path))
 			   (status (gb-return-code-to-string return-code)))
-		      (insert (format "%-70s %s\n" rom-path status))
+		      (insert (format "%-60s %s\n" rom-path status))
 		      (string= status "PASS")))))
       (whitespace-cleanup)
       (highlight-phrase "FAIL\\|CRASH" 'gb-failed-test)
+      (highlight-phrase "PASS" 'gb-passed-test)
       (beginning-of-buffer)
       (hl-line-mode)
       (insert (format "%s / %s tests passed\n\n" tests-passed total-tests)))
