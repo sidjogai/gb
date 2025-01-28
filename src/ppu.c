@@ -147,7 +147,7 @@ static void init_new_scanline(struct ppu *ppu)
 
         ppu->bg_fifo.len   = 0;
         ppu->bg_fifo.head  = 0;
-        ppu->obj_fifo.len  = 0;
+        ppu->obj_fifo.len  = 8;
         ppu->obj_fifo.head = 0;
 
         ppu->obj_buf_len = 0;
@@ -264,24 +264,31 @@ static void drawing(struct ppu *ppu, u8 *interrupt_flag);
 
 static void oam_dma(struct ppu *ppu);
 
-static struct fifo_entry pop_fifo(struct fifo *fifo)
+static struct fifo_entry fifo_pop(struct fifo *fifo)
 {
         assert(fifo->len > 0);
-
         struct fifo_entry e = fifo->entries[fifo->head];
-
         fifo->head = (fifo->head + 1) & 7;
         fifo->len--;
-
         return e;
 }
 
-static void push_to_fifo(struct fifo *fifo, struct fifo_entry e)
+static void fifo_push(struct fifo *fifo, struct fifo_entry e)
 {
         assert(fifo->len < 8);
+        fifo->entries[(fifo->head + fifo->len++) & 7] = e;
+}
 
-        fifo->entries[(fifo->head + fifo->len) & 7] = e;
-        fifo->len++;
+static struct fifo_entry *fifo_peek_at(struct fifo *fifo, int i)
+{
+        assert(i < fifo->len);
+        return fifo->entries + ((fifo->head + i) & 7);
+}
+
+static void fifo_replace(struct fifo *fifo, int i, struct fifo_entry e)
+{
+        assert(i < fifo->len);
+        fifo->entries[(fifo->head + i) & 7] = e;
 }
 
 static u8 get_bg_bitplane(struct ppu *ppu, u8 tile_id, u16 initial_offset)
@@ -359,31 +366,35 @@ static u8 get_obj_bitplane(struct ppu *ppu, u8 tile_id, u16 initial_offset)
 static void load_bg_fifo(struct ppu *ppu)
 {
         assert(ppu->bg_fifo.len == 0);
-        struct fifo_entry e;
+
         for (int bit = 7; bit >= 0; bit--) {
                 u8 low     = (ppu->bg_fetcher.bitplane0 >> bit) & 0x1;
                 u8 high    = (ppu->bg_fetcher.bitplane1 >> bit) & 0x1;
-                e.color_id = (u8)(low | high << 1);
-                push_to_fifo(&ppu->bg_fifo, e);
+                struct fifo_entry e = {
+                        .color_id = (u8)(low | high << 1)
+                };
+                fifo_push(&ppu->bg_fifo, e);
         }
-        assert(ppu->bg_fifo.len == 8);
 }
 
 static void load_obj_fifo(struct ppu *ppu)
 {
-        /* NOTE: obj fifo we should always reload it */
-        assert(ppu->obj_fifo.len == 0);
-        struct fifo_entry e;
-        struct obj obj = ppu->obj_buf[ppu->obj_index];
-        for (int bit = 7; bit >= 0; bit--) {
-                u8 low     = (ppu->obj_fetcher.bitplane0 >> bit) & 0x1;
-                u8 high    = (ppu->obj_fetcher.bitplane1 >> bit) & 0x1;
-                e.color_id = (u8)(low | high << 1);
-                e.palette  = (obj.attributes >> 4) & 0x1;
-                e.priority = (obj.attributes >> 7) & 0x1;
-                push_to_fifo(&ppu->obj_fifo, e);
-        }
         assert(ppu->obj_fifo.len == 8);
+
+        struct obj obj = ppu->obj_buf[ppu->obj_index];
+        for (int i, bit = 7; bit >= 0; bit--) {
+                i = 7 - bit;
+                if (fifo_peek_at(&ppu->obj_fifo, i)->color_id == 0) {
+                        u8 low     = (ppu->obj_fetcher.bitplane0 >> bit) & 0x1;
+                        u8 high    = (ppu->obj_fetcher.bitplane1 >> bit) & 0x1;
+                        struct fifo_entry e =  {
+                                .color_id = (u8)(low | high << 1),
+                                .palette  = (obj.attributes >> 4) & 0x1,
+                                .priority = (obj.attributes >> 7) & 0x1,
+                        };
+                        fifo_replace(&ppu->obj_fifo, i, e);
+                }
+        }
 }
 
 static void fetch_bg_tile_id_idle(struct ppu *ppu)
@@ -536,12 +547,13 @@ static void fetch_obj_bitplane1(struct ppu *ppu)
 
         /* do the obj push instantly after the fetch */
 
-        ppu->ppobj_fifo.len = 0; /* TODO: remove this! */
-
         load_obj_fifo(ppu);
+
         ppu->obj_encountered  = false;
+        ppu->obj_buf[ppu->obj_index].x = 0xFF; /* won't be considered anymore */
+
         ppu->obj_fetcher.fn = fetch_obj_tile_id_idle;
-        ppu->active_fetcher      = BG_FETCHER;
+        ppu->active_fetcher = BG_FETCHER;
 
         log_event(FIFO, "obj push");
 }
@@ -556,12 +568,9 @@ static void new_drawing(struct ppu *ppu)
                                 break;
                         }
 
-        if (obj_index != -1 &&
-            !ppu->obj_encountered &&
-            !ppu->obj_buf[obj_index].seen) {
-                ppu->obj_buf[obj_index].seen = true;
-                ppu->obj_index = obj_index;
-                do_logging = true;
+        if (obj_index != -1 && !ppu->obj_encountered ) {
+                ppu->obj_index       = obj_index;
+                do_logging           = true;
                 ppu->obj_encountered = true;
                 log_event(TEMP, "found an obj, its index was %d", ppu->obj_index);
 
@@ -574,10 +583,10 @@ static void new_drawing(struct ppu *ppu)
         if (ppu->initial_fetch_completed && !ppu->obj_encountered) {
                 assert(ppu->dots_since_scanline_started >= 86);
 
-                struct fifo_entry bg = pop_fifo(&ppu->bg_fifo);
-                struct fifo_entry obj = {0};
-                if (ppu->obj_fifo.len > 0)
-                        obj = pop_fifo(&ppu->obj_fifo);
+                struct fifo_entry bg  = fifo_pop(&ppu->bg_fifo);
+                struct fifo_entry obj = fifo_pop(&ppu->obj_fifo);
+
+                fifo_push(&ppu->obj_fifo, (struct fifo_entry){0});
 
                 log_event(FIFO, "FIFOs clocked: BG len = %d; OBJ len = %d",
                           ppu->bg_fifo.len, ppu->obj_fifo.len);

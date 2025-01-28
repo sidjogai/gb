@@ -213,7 +213,6 @@ struct ppu {
                 u8 x;
                 u8 tile_index;
                 u8 attributes;
-                bool seen;
         } obj_buf[10];
         int obj_buf_len;
 

@@ -57,6 +57,7 @@ static void init_gb(struct gameboy *gb,
 
         gb->ppu.bg_fetcher.fn   = fetch_bg_tile_id_idle;
         gb->ppu.obj_fetcher.fn  = fetch_obj_tile_id_idle;
+        gb->ppu.obj_fifo.len = 8;
         gb->ppu.mode            = OAM_SCAN;
         gb->ppu.display_buf     = display_buf;
         gb->ppu.vram_accessible = true;
