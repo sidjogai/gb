@@ -209,7 +209,6 @@ static void step_cpu(struct cpu *cpu)
                         process_interrupts(cpu, &cpu->op);
                 } else {
                         tick_cpu(cpu);
-                        TRACE("(cpu halted)");
                         return;
                 }
         }

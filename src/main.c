@@ -120,66 +120,47 @@ static struct window windows[] = {
         },
 };
 
-static void handle_keypress(int keypress, bool is_key_down)
-{
-        switch(keypress) {
-        case TOGGLE_WINDOW_MAP_WINDOW:
-                toggle_window_shown(&windows[WINDOW_MAP]);
-                break;
-        case TOGGLE_BG_MAP_WINDOW:
-                toggle_window_shown(&windows[BG_MAP]);
-                break;
-        case TOGGLE_INFO_WINDOW:
-                toggle_window_shown(&windows[INFO]);
-                break;
-        case TOGGLE_TILE_DATA_WINDOW:
-                toggle_window_shown(&windows[TILE_DATA]);
-                break;
-        case TOGGLE_SPRITES_WINDOW:
-                toggle_window_shown(&windows[SPRITES]);
-                break;
-
-        case KEY_A:
-                gb.joypad.state[A] = is_key_down;
-                break;
-        case KEY_B:
-                gb.joypad.state[B] = is_key_down;
-                break;
-        case KEY_SELECT:
-                gb.joypad.state[SELECT] = is_key_down;
-                break;
-        case KEY_START:
-                gb.joypad.state[START] = is_key_down;
-                break;
-
-        case KEY_RIGHT:
-                gb.joypad.state[RIGHT] = is_key_down;
-                break;
-        case KEY_LEFT:
-                gb.joypad.state[LEFT] = is_key_down;
-                break;
-        case KEY_UP:
-                gb.joypad.state[UP] = is_key_down;
-                break;
-        case KEY_DOWN:
-                gb.joypad.state[DOWN] = is_key_down;
-                break;
-
-        case INCREASE_SCALE:
-        case DECREASE_SCALE:
-                for (int i = 0; i < len(windows); i++) {
-                        if (window_focused(&windows[i])) {
-                                int s = windows[i].scale;
-                                if (keypress == INCREASE_SCALE && s < 9)
-                                        s++;
-                                else if (s > 1)
-                                        s--;
-                                rescale_window(&windows[i], s);
-                        }
-                }
-                break;
-        }
-}
+#define DO_KEYMAP(code)                                                 \
+        code(KEY_A, gb.joypad.state[A] = key_down);                     \
+        code(KEY_B, gb.joypad.state[B] = key_down);                     \
+        code(KEY_START, gb.joypad.state[START] = key_down);             \
+        code(KEY_SELECT, gb.joypad.state[SELECT] = key_down);           \
+        code(KEY_LEFT, gb.joypad.state[LEFT] = key_down);               \
+        code(KEY_RIGHT, gb.joypad.state[RIGHT] = key_down);             \
+        code(KEY_DOWN, gb.joypad.state[DOWN] = key_down);               \
+        code(KEY_UP, gb.joypad.state[UP] = key_down);                   \
+        code(QUIT, goto quit);                                          \
+        code(RESET, goto reset);                                        \
+        code(TOGGLE_WINDOW_MAP_WINDOW,                                  \
+             if (key_down)                                              \
+                     toggle_window_shown(&windows[WINDOW_MAP]));        \
+        code(TOGGLE_SPRITES_WINDOW,                                     \
+             if (key_down)                                              \
+                     toggle_window_shown(&windows[SPRITES]));           \
+        code(INCREASE_SCALE,                                            \
+             if (key_down) {                                            \
+                     for (int i = 0; i < len(windows); i++) {           \
+                             if (window_focused(&windows[i])) {         \
+                                     int s = windows[i].scale;          \
+                                     if (s < 9)                         \
+                                             s++;                       \
+                                     rescale_window(&windows[i], s);    \
+                             }                                          \
+                     }                                                  \
+             });                                                        \
+        code(DECREASE_SCALE,                                            \
+             if (key_down) {                                            \
+                     for (int i = 0; i < len(windows); i++) {           \
+                             if (window_focused(&windows[i])) {         \
+                                     int s = windows[i].scale;          \
+                                     if (s < 9)                         \
+                                             s++;                       \
+                                     rescale_window(&windows[i], s);    \
+                             }                                          \
+                     }                                                  \
+             });
+#define handle_key_down(key, action) case key: key_down = true; action; break;
+#define handle_key_up(key, action) case key: key_down = false; action; break;
 
 int main(int argc, char *argv[])
 {
@@ -223,7 +204,7 @@ int main(int argc, char *argv[])
         u64 frame, start, elapsed;
         FRAME = &frame;
 
- start:
+ reset:
         init_gb(&gb, gb_buf, palette, external_ram, rom_buf);
         TICK = &gb.cpu.tick;
 
@@ -232,32 +213,21 @@ int main(int argc, char *argv[])
         load_rom(&gb, rom);
         frame = 1;
 
-        for (SDL_Event event; ; frame++) {
+        for (; ; frame++) {
                 start = clock_ns();
 
-                /* memset(gb.joypad.state, 0, sizeof gb.joypad.state); */
-
-                int sym;
-                bool was_key_down_this_frame = false;
+                bool key_down;
+                SDL_Event event;
                 if (SDL_PollEvent(&event)) {
                         switch (event.type) {
                         case SDL_KEYDOWN:
-                                was_key_down_this_frame = true;
-                                sym = event.key.keysym.sym;
-                                switch (sym) {
-                                case QUIT:
-                                        goto done;
-                                case RESET:
-                                        goto start;
-                                default:
-                                        handle_keypress(sym, 1);
-                                        break;
+                                switch (event.key.keysym.sym) {
+                                        DO_KEYMAP(handle_key_down);
                                 }
                                 break;
                         case SDL_KEYUP:
-                                if (!was_key_down_this_frame) {
-                                        sym = event.key.keysym.sym;
-                                        handle_keypress(sym, 0);
+                                switch (event.key.keysym.sym) {
+                                        DO_KEYMAP(handle_key_up);
                                 }
                                 break;
                         }
@@ -274,6 +244,9 @@ int main(int argc, char *argv[])
                         draw_tile_data(&gb.ppu, windows[TILE_DATA].buf);
 
                 if (windows[BG_MAP].shown)
+                        draw_bg_map(&gb.ppu, windows[BG_MAP].buf);
+
+                if (windows[WINDOW_MAP].shown)
                         draw_bg_map(&gb.ppu, windows[BG_MAP].buf);
 
                 if (windows[SPRITES].shown)
@@ -294,6 +267,6 @@ int main(int argc, char *argv[])
                         sleep_ns(16666667 - elapsed);
         }
 
- done:
+quit:
         return 0;
 }

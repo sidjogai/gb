@@ -146,24 +146,21 @@ static void init_new_scanline(struct ppu *ppu)
         /* set_oam_access(ppu, false); */
         assert(ppu->vram_accessible);
 
-        ppu->active_fetcher = BG_FETCHER;
+        ppu->active_fetcher  = BG_FETCHER;
         ppu->obj_encountered = false;
 
         ppu->initial_fetch_completed = false;
-        ppu->scx_pixels_dropped = false;
-
-        ppu->bg_fifo.len   = 0;
-        ppu->bg_fifo.head  = 0;
-        ppu->obj_fifo.len  = 8;
-        ppu->obj_fifo.head = 0;
-
-        ppu->obj_buf_len = 0;
-
-        ppu->bg_fetcher.fn  = fetch_bg_tile_id_idle;
-        ppu->obj_fetcher.fn = fetch_obj_tile_id_idle;
+        ppu->scx_pixels_dropped      = false;
 
         ppu->shift_count = 0;
         ppu->pixel_count = 0;
+
+        ppu->bg_fifo.len  = 0;
+        ppu->obj_fifo.len = 8;
+        ppu->obj_buf_len  = 0;
+
+        ppu->bg_fetcher.fn  = fetch_bg_tile_id_idle;
+        ppu->obj_fetcher.fn = fetch_obj_tile_id_idle;
 
         /* as dots_since_scanline_started++ at the end of tick_ppu() */
         ppu->dots_since_scanline_started = -1;
@@ -190,7 +187,6 @@ static void new_hblank(struct ppu *ppu, u8 *interrupt_flag)
                 } else {
                         switch_to_mode(ppu, OAM_SCAN);
                 }
-
         }
 }
 
@@ -433,9 +429,8 @@ static void fetch_bg_bitplane0_idle(struct ppu *ppu)
 
 static void fetch_bg_bitplane0(struct ppu *ppu)
 {
-        ppu->bg_fetcher.bitplane0 = get_bg_bitplane(ppu,
-                                                    ppu->bg_fetcher.tile_id,
-                                                    0);
+        u8 tile_id = ppu->bg_fetcher.tile_id;
+        ppu->bg_fetcher.bitplane0 = get_bg_bitplane(ppu, tile_id, 0);
 
         ppu->bg_fetcher.fn = fetch_bg_bitplane1_idle;
         log_event(FIFO, "fetch_bg_bitplane0");
@@ -449,9 +444,8 @@ static void fetch_bg_bitplane1_idle(struct ppu *ppu)
 
 static void fetch_bg_bitplane1(struct ppu *ppu)
 {
-        ppu->bg_fetcher.bitplane1 = get_bg_bitplane(ppu,
-                                                    ppu->bg_fetcher.tile_id,
-                                                    1);
+        u8 tile_id = ppu->bg_fetcher.tile_id;
+        ppu->bg_fetcher.bitplane1 = get_bg_bitplane(ppu, tile_id, 1);
 
         ppu->bg_fetcher.fn = bg_push;
         log_event(FIFO, "fetch_bg_bitplane1");
@@ -529,9 +523,8 @@ static void fetch_obj_bitplane0_idle(struct ppu *ppu)
 
 static void fetch_obj_bitplane0(struct ppu *ppu)
 {
-        ppu->obj_fetcher.bitplane0 = get_obj_bitplane(ppu,
-                                                      ppu->obj_fetcher.tile_id,
-                                                      0);
+        u8 tile_id = ppu->obj_fetcher.tile_id;
+        ppu->obj_fetcher.bitplane0 = get_obj_bitplane(ppu, tile_id, 0);
 
         ppu->obj_fetcher.fn = fetch_obj_bitplane1_idle;
         log_event(FIFO, "fetch_obj_bitplane0");
@@ -545,15 +538,13 @@ static void fetch_obj_bitplane1_idle(struct ppu *ppu)
 
 static void fetch_obj_bitplane1(struct ppu *ppu)
 {
-        ppu->obj_fetcher.bitplane1 = get_obj_bitplane(ppu,
-                                                      ppu->obj_fetcher.tile_id,
-                                                      1);
+        u8 tile_id = ppu->obj_fetcher.tile_id;
+        ppu->obj_fetcher.bitplane1 = get_obj_bitplane(ppu, tile_id, 1);
 
         ppu->obj_fetcher.fn = fetch_obj_bitplane1_idle;
         log_event(FIFO, "fetch_obj_bitplane0");
 
         /* do the obj push instantly after the fetch */
-
         load_obj_fifo(ppu);
 
         ppu->obj_encountered  = false;
@@ -620,9 +611,8 @@ static void new_drawing(struct ppu *ppu)
                                 palette = obj.palette ? ppu->obp1 : ppu->obp0;
                         }
 
-                        color = (palette >> (color * 2)) & 0x3;
-                        if (!(ppu->lcdc & BG_WIN_ENABLE))
-                                color = 0;
+                        color  = (palette >> (color * 2)) & 0x3;
+                        color *= !!(ppu->lcdc & BG_WIN_ENABLE);
 
                         u32 gui_color = ppu->palette[color];
                         int pos = ppu->ly * 160 + ppu->pixel_count - 9;

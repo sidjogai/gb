@@ -88,19 +88,18 @@ static u8 * get_tile(struct ppu *ppu, u8 i)
 {
         u8   *tile_addr     = ppu->vram + i * 16;
         bool  signed_method = (ppu->lcdc >> 4) & 0x1;
-        signed_method = false;
 
-        return signed_method ? tile_addr + 0x1000 : tile_addr;
+        return signed_method ? tile_addr : tile_addr + 0x1000;
 }
 
-static void draw_tilemap_0x9800(struct ppu *ppu, u32 buf[])
+static void draw_bg_map(struct ppu *ppu, u32 buf[])
 {
-        u8 *tile = ppu->vram + 0x1800;
+        u8 *tile = ppu->vram + (((ppu->lcdc >> 3) & 0x1) ? 0x1C00: 0x1800);
 
         for (int i = 0; i < 32 * 32; i++)
                 draw_tile(get_tile(ppu, *tile++), buf, i, 256, ppu->palette);
 
-        draw_viewport_border(ppu, buf, ppu->palette[3]);
+        draw_viewport_border(ppu, buf, 0xFFFF0000);
 }
 
 static void draw_tilemap_0x9C00(struct ppu *ppu, u32 buf[])
@@ -119,7 +118,7 @@ static void draw_sprites(struct ppu *ppu, u32 buf[], u32 palette[])
 {
         u8 *p = ppu->oam + 2;
         for (int i = 0; i < 40; i++, p += 4)
-                draw_tile(get_tile(ppu, *p), buf, i, 8 * 10, palette);
+                draw_tile(ppu->vram + *p * 16, buf, i, 8 * 10, palette);
 }
 
 /* ============================== stats viewer ============================== */

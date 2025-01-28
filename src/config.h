@@ -15,8 +15,8 @@ enum keymap {
         TOGGLE_BG_MAP_WINDOW     = 'b',
         TOGGLE_INFO_WINDOW       = 'i',
         TOGGLE_TILE_DATA_WINDOW  = 't',
-        TOGGLE_WINDOW_MAP_WINDOW = 'w',
         TOGGLE_SPRITES_WINDOW    = 's',
+        TOGGLE_WINDOW_MAP_WINDOW = 'w',
 
         DECREASE_SCALE           = '[',
         INCREASE_SCALE           = ']',
