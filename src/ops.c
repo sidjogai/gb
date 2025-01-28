@@ -24,11 +24,10 @@
 /* halt: 1 byte, 4 cycles */
 static void halt(struct cpu *cpu)
 {
-        cpu->halted = true;
-
-        if (!cpu->ime && interrupt_pending(cpu)) {
-                cpu->regs.pc--;
-        }
+        if (!cpu->ime && interrupt_pending(cpu))
+                cpu->halt_bug = true;
+        else
+                cpu->halted = true;
 
         TRACE("halt");
 }

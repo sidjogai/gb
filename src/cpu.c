@@ -163,7 +163,7 @@ static bool checkcond(struct cpu *cpu, enum cond c)
 
 static bool interrupt_pending(struct cpu *cpu)
 {
-        return (cpu->interrupt_enable & cpu->interrupt_flag) & 0x1F;
+        return cpu->interrupt_enable & cpu->interrupt_flag & 0x1F;
 }
 
 static void process_interrupts(struct cpu *cpu, u8 *op)
@@ -213,10 +213,15 @@ static void step_cpu(struct cpu *cpu)
                         return;
                 }
         }
-        
+
         if (cpu->last_instr_was_ei) {
                 cpu->ime = 1;
                 cpu->last_instr_was_ei = false;
+        }
+
+        if (cpu->halt_bug) {
+                cpu->regs.pc--;
+                cpu->halt_bug = false;
         }
 
         dispatch_op(cpu, cpu->op);

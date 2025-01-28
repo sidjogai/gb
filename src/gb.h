@@ -125,10 +125,9 @@ struct cpu {
         u8 interrupt_enable; /* FFFF - IE: Interrupt enable */
         u8 interrupt_flag; /* FF0F — IF: Interrupt flag */
         
-
         bool last_instr_was_ei;
-        bool last_instr_was_halt;
         bool halted;
+        bool halt_bug;
 };
 
 static void tick_cpu(struct cpu *);
