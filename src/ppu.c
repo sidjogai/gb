@@ -1,3 +1,17 @@
+static void fetch_bg_tile_id_idle(struct ppu *ppu);
+static void fetch_bg_tile_id(struct ppu *ppu);
+static void fetch_bg_bitplane0_idle(struct ppu *ppu);
+static void fetch_bg_bitplane0(struct ppu *ppu);
+static void fetch_bg_bitplane1_idle(struct ppu *ppu);
+static void fetch_bg_bitplane1(struct ppu *ppu);
+static void bg_push(struct ppu *ppu);
+static void fetch_obj_tile_id_idle(struct ppu *ppu);
+static void fetch_obj_tile_id(struct ppu *ppu);
+static void fetch_obj_bitplane0_idle(struct ppu *ppu);
+static void fetch_obj_bitplane0(struct ppu *ppu);
+static void fetch_obj_bitplane1_idle(struct ppu *ppu);
+static void fetch_obj_bitplane1(struct ppu *ppu);
+
 #define BIN_FMT "%c%c%c%c'%c%c%c%c"
 #define BIN(x)                                                  \
         ('0' + ((x >> 7) & 0x1)), ('0' + ((x >> 6) & 0x1)),     \
@@ -123,10 +137,13 @@ static void init_new_scanline(struct ppu *ppu)
         ppu->initial_fetch_completed = false;
         ppu->scx_pixels_dropped = false;
 
-        memset(&ppu->obj_fifo, 0, sizeof ppu->obj_fifo);
-        memset(&ppu->bg_fifo, 0, sizeof ppu->bg_fifo);
-        memset(&ppu->obj_fetcher, 0, sizeof ppu->obj_fetcher);
-        memset(&ppu->bg_fetcher, 0, sizeof ppu->bg_fetcher);
+        ppu->bg_fifo.len   = 0;
+        ppu->bg_fifo.head  = 0;
+        ppu->obj_fifo.len  = 0;
+        ppu->obj_fifo.head = 0;
+
+        ppu->bg_fetcher.fn  = fetch_bg_tile_id_idle;
+        ppu->obj_fetcher.fn = fetch_obj_tile_id_idle;
 
         ppu->shift_count = 0;
         ppu->pixel_count = 0;
@@ -197,8 +214,8 @@ static void new_oam_scan(struct ppu *ppu)
                 ppu->nslots = 0;
 
                 u8 sprite_height = (ppu->lcdc & (1 << 2)) ? 16 : 8;
-                if (sprite_height == 16)
-                        ; /* TODO */
+
+                if (sprite_height == 16) {/* TODO */}
 
                 for (u8 *p = ppu->oam; p < ppu->oam + 160; p += 4) {
                         u8 y = *p - 16;
@@ -256,26 +273,7 @@ static void push_to_fifo(struct fifo *fifo, struct fifo_entry e)
         fifo->len++;
 }
 
-static void fetch_bg_tile_id(struct ppu *ppu)
-{
-        u8 nametable = ((ppu->lcdc >> 3) & 0x1);
-        u8 y         = (u8)(ppu->ly + ppu->scy) / 8;
-        u8 x         = (u8)(ppu->pixel_count + ppu->scx) / 8;
-
-        u16 offset = 0x1800 | nametable << 10 | y << 5 | x;
-
-        assert(vram_offset_to_addr(offset) >= TILEMAP1_START &&
-               vram_offset_to_addr(offset) <= TILEMAP2_END);
-
-        ppu->bg_fetcher.tile_id = ppu->vram[offset];
-}
-
-static void fetch_obj_tile_id(struct ppu *ppu)
-{
-        ppu->obj_fetcher.tile_id = ppu->obj_slots[ppu->obj_index].tile_index;
-}
-
-static u8 bg_bitplane_formula(struct ppu *ppu, u8 tile_id, int initial_offset)
+static u8 bg_bitplane_formula(struct ppu *ppu, u8 tile_id, u16 initial_offset)
 {
         initial_offset |= !((ppu->lcdc & 0x10) || (tile_id & 0x80)) << 12;
         initial_offset |= tile_id << 4;
@@ -287,7 +285,7 @@ static u8 bg_bitplane_formula(struct ppu *ppu, u8 tile_id, int initial_offset)
         return ppu->vram[initial_offset];
 }
 
-static u8 obj_bitplane_formula(struct ppu *ppu, u8 tile_id, int initial_offset)
+static u8 obj_bitplane_formula(struct ppu *ppu, u8 tile_id, u16 initial_offset)
 {
         static const u8 reversed[256] = {
                 0x00, 0x80, 0x40, 0xc0, 0x20, 0xa0, 0x60, 0xe0,
@@ -347,30 +345,6 @@ static u8 obj_bitplane_formula(struct ppu *ppu, u8 tile_id, int initial_offset)
         return data;
 }
 
-static void fetch_bg_bitplane0(struct ppu *ppu)
-{
-        u8 tile_id = ppu->bg_fetcher.tile_id;
-        ppu->bg_fetcher.bitplane0 = bg_bitplane_formula(ppu, tile_id, 0);
-}
-
-static void fetch_obj_bitplane0(struct ppu *ppu)
-{
-        u8 tile_id = ppu->obj_fetcher.tile_id;
-        ppu->obj_fetcher.bitplane0 = obj_bitplane_formula(ppu, tile_id, 0);
-}
-
-static void fetch_bg_bitplane1(struct ppu *ppu)
-{
-        u8 tile_id = ppu->bg_fetcher.tile_id;
-        ppu->bg_fetcher.bitplane1 = bg_bitplane_formula(ppu, tile_id, 1);
-}
-
-static void fetch_obj_bitplane1(struct ppu *ppu)
-{
-        u8 tile_id = ppu->obj_fetcher.tile_id;
-        ppu->obj_fetcher.bitplane1 = obj_bitplane_formula(ppu, tile_id, 1);
-}
-
 static void load_obj_fifo(struct ppu *ppu)
 {
         /* NOTE: obj fifo we should always reload it */
@@ -398,7 +372,152 @@ static void load_bg_fifo(struct ppu *ppu)
         assert(ppu->bg_fifo.len == 8);
 }
 
-static void tick_drawing(struct ppu *ppu, u8 *interrupt_flag);
+static void fetch_bg_tile_id_idle(struct ppu *ppu)
+{
+        ppu->bg_fetcher.fn = fetch_bg_tile_id;
+        log_event(FIFO, "fetch_bg_tile_id_idle");
+}
+
+static void fetch_bg_tile_id(struct ppu *ppu)
+{
+        u8 nametable = ((ppu->lcdc >> 3) & 0x1);
+        u8 y         = (u8)(ppu->ly + ppu->scy) / 8;
+        u8 x         = (u8)(ppu->pixel_count + ppu->scx) / 8;
+
+        u16 offset = 0x1800 | nametable << 10 | y << 5 | x;
+
+        assert(vram_offset_to_addr(offset) >= TILEMAP1_START &&
+               vram_offset_to_addr(offset) <= TILEMAP2_END);
+
+        ppu->bg_fetcher.tile_id = ppu->vram[offset];
+
+        ppu->bg_fetcher.fn = fetch_bg_bitplane0_idle;
+        log_event(FIFO, "fetch_bg_tile_id");
+}
+
+static void fetch_bg_bitplane0_idle(struct ppu *ppu)
+{
+        ppu->bg_fetcher.fn = fetch_bg_bitplane0;
+        log_event(FIFO, "fetch_bg_bitplane0_idle");
+}
+
+static void fetch_bg_bitplane0(struct ppu *ppu)
+{
+        u8 tile_id = ppu->bg_fetcher.tile_id;
+        ppu->bg_fetcher.bitplane0 = bg_bitplane_formula(ppu, tile_id, 0);
+
+        ppu->bg_fetcher.fn = fetch_bg_bitplane1_idle;
+        log_event(FIFO, "fetch_bg_bitplane0");
+}
+
+static void fetch_bg_bitplane1_idle(struct ppu *ppu)
+{
+        ppu->bg_fetcher.fn = fetch_bg_bitplane1;
+        log_event(FIFO, "fetch_bg_bitplane1_idle");
+}
+
+static void fetch_bg_bitplane1(struct ppu *ppu)
+{
+        u8 tile_id = ppu->bg_fetcher.tile_id;
+        ppu->bg_fetcher.bitplane1 = bg_bitplane_formula(ppu, tile_id, 1);
+
+        ppu->bg_fetcher.fn = bg_push;
+        log_event(FIFO, "fetch_bg_bitplane1");
+
+        if (!ppu->initial_fetch_completed) {
+                load_bg_fifo(ppu);
+                ppu->initial_fetch_completed = true;
+                ppu->bg_fetcher.fn = fetch_bg_tile_id_idle;
+        } else if (ppu->sprite_encountered) {
+                /* NOTE: fetch_tile_id instead of fetch_tile_id_idle as the
+                   first sprite cycle overlaps the last background cycle. */
+                log_event(FIFO, "sprite fetch done");
+                ppu->active_fetcher = OBJ_FETCHER;
+                ppu->obj_fetcher.fn = fetch_obj_tile_id;
+        }
+}
+
+static void bg_push(struct ppu *ppu)
+{
+        if (!ppu->sprite_encountered) {
+                if (ppu->bg_fifo.len == 0) {
+                        load_bg_fifo(ppu);
+                        ppu->bg_fetcher.fn = fetch_bg_tile_id_idle;
+                        log_event(FIFO, "BG - PUSH (succeeded)");
+                } else {
+                        log_event(FIFO, "BG - PUSH (attempted)");
+                }
+        } else {
+                if (ppu->bg_fifo.len == 0) {
+                        log_event(FIFO, "weirddddddddd 111!");
+                        load_bg_fifo(ppu);
+                        ppu->bg_fetcher.fn = fetch_bg_tile_id_idle;
+                        ppu->active_fetcher = OBJ_FETCHER;
+                        ppu->obj_fetcher.fn = fetch_obj_tile_id_idle;
+                } else {
+                        log_event(FIFO, "weirddddddddd 222!");
+                        ppu->bg_fetcher.fn = bg_push;
+                        ppu->active_fetcher = OBJ_FETCHER;
+                        ppu->obj_fetcher.fn = fetch_obj_tile_id_idle;
+                }
+        }
+
+}
+
+static void fetch_obj_tile_id_idle(struct ppu *ppu)
+{
+        ppu->obj_fetcher.fn = fetch_obj_tile_id;
+        log_event(FIFO, "fetch_obj_tile_id_idle");
+}
+
+static void fetch_obj_tile_id(struct ppu *ppu)
+{
+        ppu->obj_fetcher.tile_id = ppu->obj_slots[ppu->obj_index].tile_index;
+
+        ppu->obj_fetcher.fn = fetch_obj_bitplane0_idle;
+        log_event(FIFO, "fetch_obj_tile_id");
+}
+
+static void fetch_obj_bitplane0_idle(struct ppu *ppu)
+{
+        ppu->obj_fetcher.fn = fetch_obj_bitplane0;
+        log_event(FIFO, "fetch_obj_bitplane0_idle");
+}
+
+static void fetch_obj_bitplane0(struct ppu *ppu)
+{
+        u8 tile_id = ppu->obj_fetcher.tile_id;
+        ppu->obj_fetcher.bitplane0 = obj_bitplane_formula(ppu, tile_id, 0);
+
+        ppu->obj_fetcher.fn = fetch_obj_bitplane1_idle;
+        log_event(FIFO, "fetch_obj_bitplane0");
+}
+
+static void fetch_obj_bitplane1_idle(struct ppu *ppu)
+{
+        ppu->obj_fetcher.fn = fetch_obj_bitplane1;
+        log_event(FIFO, "fetch_obj_bitplane1_idle");
+}
+
+static void fetch_obj_bitplane1(struct ppu *ppu)
+{
+        u8 tile_id = ppu->obj_fetcher.tile_id;
+        ppu->obj_fetcher.bitplane1 = obj_bitplane_formula(ppu, tile_id, 1);
+
+        ppu->obj_fetcher.fn = fetch_obj_bitplane1_idle;
+        log_event(FIFO, "fetch_obj_bitplane0");
+
+        /* do the obj push instantly after the fetch */
+
+        ppu->obj_fifo.len = 0; /* TODO: remove this! */
+
+        load_obj_fifo(ppu);
+        ppu->sprite_encountered  = false;
+        ppu->obj_fetcher.fn = fetch_obj_tile_id_idle;
+        ppu->active_fetcher      = BG_FETCHER;
+
+        log_event(FIFO, "obj push");
+}
 
 static int check_obj(struct ppu *ppu)
 {
@@ -408,30 +527,23 @@ static int check_obj(struct ppu *ppu)
         for (int i = 0; i < ppu->nslots; i++) {
                 int x = ppu->obj_slots[i].x;
                 /* TODO: use ppu->pixel_count instead? */
-                if (x >= ppu->lx && x <= ppu->lx + 8) {
+                if (x >= ppu->lx && x <= ppu->lx + 8)
                         obj_index = i;
-                        /* if (ppu->obj_slots[i].seen) { */
-                        /*         return -1; */
-                        /* } else { */
-                        /*         ppu->obj_slots[i].seen = true; */
-                        /*         return i; */
-                        /* } */
-                }
         }
         return obj_index;
 }
 
 static void new_drawing(struct ppu *ppu)
 {
-        /* assert(ppu->active_fetcher == BG_FETCHER); */
-
-        /* printf("dots are %d lx is %d\n", ppu->dots_since_scanline_started, ppu->lx); */
-
         for (int i = 0; i < ppu->nslots; i++) {
                 int x = ppu->obj_slots[i].x;
                 if (x >= ppu->lx && x <= ppu->lx + 8) {
-                        log_event(TEMP, "found obj with x = %d, id = %d (lx was %d), seen is %d and sprite_encountered is %d ",
-                                  x, ppu->obj_slots[i].tile_index, ppu->lx, ppu->obj_slots[i].seen, ppu->sprite_encountered);
+                        log_event(TEMP, "found obj with x = %d, id = %d "
+                                  "(lx was %d), seen is %d and sprite_encountered is %d ",
+                                  x, 
+                                  ppu->obj_slots[i].tile_index, 
+                                  ppu->lx, ppu->obj_slots[i].seen, 
+                                  ppu->sprite_encountered);
                 }
         }
 
@@ -448,22 +560,11 @@ static void new_drawing(struct ppu *ppu)
                 ppu->sprite_encountered = true;
                 log_event(TEMP, "found a sprite, its index was %d", ppu->obj_index);
 
-                if (ppu->active_fetcher == BG_FETCHER && ppu->bg_fetcher.state == PUSH) {
+                if (ppu->active_fetcher == BG_FETCHER && ppu->bg_fetcher.fn == bg_push) {
                         ppu->active_fetcher = OBJ_FETCHER;
-                        ppu->obj_fetcher.state = FETCH_TILE_ID_IDLE; /* TODO: check this! */
+                        ppu->obj_fetcher.fn = fetch_obj_tile_id_idle; /* TODO: check this! */
                 }
         }
-
-        /* if (!ppu->sprite_encountered && (ppu->obj_index = check_obj(ppu)) != -1) { */
-        /*         do_logging = true; */
-        /*         ppu->sprite_encountered = true; */
-        /*         log_event(TEMP, "found a sprite, its index was %d", ppu->obj_index); */
-
-        /*         if (ppu->active_fetcher == BG_FETCHER && ppu->bg_fetcher.state == PUSH) { */
-        /*                 ppu->active_fetcher = OBJ_FETCHER; */
-        /*                 ppu->obj_fetcher.state = FETCH_TILE_ID_IDLE; /\* TODO: check this! *\/ */
-        /*         } */
-        /* } */
 
         if (ppu->initial_fetch_completed && !ppu->sprite_encountered) {
                 assert(ppu->dots_since_scanline_started >= 86);
@@ -510,132 +611,10 @@ static void new_drawing(struct ppu *ppu)
                 }
         }
 
-        // FCNT == 5 so go to sprite fetch at once */
-        if (ppu->active_fetcher == BG_FETCHER &&
-            ppu->sprite_encountered &&
-            ppu->bg_fetcher.state == PUSH) {
-                ppu->active_fetcher = OBJ_FETCHER;
-                ppu->obj_fetcher.state = FETCH_TILE_ID_IDLE;
-                exit(1);
-        }
-
-        if (ppu->active_fetcher == BG_FETCHER) {
-
-                switch(ppu->bg_fetcher.state) {
-                case FETCH_TILE_ID_IDLE: // 80, 86
-                        log_event(FIFO, "BG - FETCH_TILE_ID_IDLE");
-                        ppu->bg_fetcher.state = FETCH_TILE_ID;
-                        break;
-                case FETCH_TILE_ID: // 81, 87
-                        log_event(FIFO, "BG - FETCH_TILE_ID");
-                        fetch_bg_tile_id(ppu);
-                        ppu->bg_fetcher.state = FETCH_BITPLANE0_IDLE;
-                        break;
-                case FETCH_BITPLANE0_IDLE: // 82, 88
-                        log_event(FIFO, "BG - FETCH_BITPLANE0_IDLE");
-                        ppu->bg_fetcher.state = FETCH_BITPLANE0;
-                        break;
-                case FETCH_BITPLANE0: // 83, 89
-                        log_event(FIFO, "BG - FETCH_BITPLANE0");
-                        fetch_bg_bitplane0(ppu);
-                        ppu->bg_fetcher.state = FETCH_BITPLANE1_IDLE;
-                        break;
-                case FETCH_BITPLANE1_IDLE: // 84, 80
-                        log_event(FIFO, "BG - FETCH_BITPLANE1_IDLE");
-                        ppu->bg_fetcher.state = FETCH_BITPLANE1;
-                        break;
-                case FETCH_BITPLANE1: // 85, 91
-                        log_event(FIFO, "BG - FETCH_BITPLANE1");
-                        fetch_bg_bitplane1(ppu);
-
-                        if (!ppu->initial_fetch_completed) {
-                                load_bg_fifo(ppu);
-                                ppu->initial_fetch_completed = true;
-                                ppu->bg_fetcher.state = FETCH_TILE_ID_IDLE;
-                                break;
-                        }
-
-                        if (ppu->sprite_encountered) {
-                                /* NOTE: FETCH_TILE_ID as first sprite cycle
-                                   overlaps the last background cycle. */
-                                log_event(FIFO, "sprite fetch done");
-                                ppu->active_fetcher = OBJ_FETCHER;
-                                ppu->obj_fetcher.state = FETCH_TILE_ID;
-                        }
-
-                        ppu->bg_fetcher.state = PUSH;
-                        break;
-                case PUSH:
-                        if (!ppu->sprite_encountered) {
-                                if (ppu->bg_fifo.len == 0) {
-                                        load_bg_fifo(ppu);
-                                        ppu->bg_fetcher.state = FETCH_TILE_ID_IDLE;
-                                        log_event(FIFO, "BG - PUSH (succeeded)");
-                                } else {
-                                        log_event(FIFO, "BG - PUSH (attempted)");
-
-                                        /* will try again next time */
-                                        /* log_event(TEMP, "will try again next time"); */
-                                }
-                        } else {
-                                if (ppu->bg_fifo.len == 0) {
-                                        log_event(FIFO, "weirddddddddd 111!");
-                                        load_bg_fifo(ppu);
-                                        ppu->bg_fetcher.state = FETCH_TILE_ID_IDLE;
-                                        ppu->active_fetcher = OBJ_FETCHER;
-                                        ppu->obj_fetcher.state = FETCH_TILE_ID_IDLE;
-                                } else {
-                                        log_event(FIFO, "weirddddddddd 222!");
-                                        ppu->bg_fetcher.state = PUSH;
-                                        ppu->active_fetcher = OBJ_FETCHER;
-                                        ppu->obj_fetcher.state = FETCH_TILE_ID_IDLE;
-                                }
-                        }
-                        break;
-                }
-        } else {
-                switch(ppu->obj_fetcher.state) {
-                case FETCH_TILE_ID_IDLE: // 80, 86
-                        log_event(FIFO, "OBJ - FETCH_TILE_ID_IDLE");
-                        ppu->obj_fetcher.state = FETCH_TILE_ID;
-                        break;
-                case FETCH_TILE_ID: // 81, 87
-                        log_event(FIFO, "OBJ - FETCH_TILE_ID");
-                        fetch_obj_tile_id(ppu);
-                        ppu->obj_fetcher.state = FETCH_BITPLANE0_IDLE;
-                        break;
-                case FETCH_BITPLANE0_IDLE: // 82, 88
-                        log_event(FIFO, "OBJ - FETCH_BITPLANE0_IDLE");
-                        ppu->obj_fetcher.state = FETCH_BITPLANE0;
-                        break;
-                case FETCH_BITPLANE0: // 83, 89
-                        log_event(FIFO, "OBJ - FETCH_BITPLANE0");
-                        fetch_obj_bitplane0(ppu);
-                        ppu->obj_fetcher.state = FETCH_BITPLANE1_IDLE;
-                        break;
-                case FETCH_BITPLANE1_IDLE: // 84, 80
-                        log_event(FIFO, "OBJ - FETCH_BITPLANE1_IDLE");
-                        ppu->obj_fetcher.state = FETCH_BITPLANE1;
-                        break;
-                case FETCH_BITPLANE1: // 85, 91
-                        log_event(FIFO, "OBJ - FETCH_BITPLANE1");
-                        ppu->obj_fifo.len = 0;
-                        fetch_obj_bitplane1(ppu);
-                        ppu->obj_fetcher.state = PUSH;
-
-                        /* TODO: check this */
-                        log_event(FIFO, "OBJ - PUSH");
-
-                        load_obj_fifo(ppu);
-                        ppu->sprite_encountered = false;
-                        ppu->obj_fetcher.state = FETCH_TILE_ID_IDLE;
-                        ppu->active_fetcher = BG_FETCHER;
-                        break;
-                case PUSH:
-                        assert(false);
-                        break;
-                }
-        }
+        if (ppu->active_fetcher == BG_FETCHER)
+                ppu->bg_fetcher.fn(ppu);
+        else
+                ppu->obj_fetcher.fn(ppu);
 }
 
 /* NOTE: for now, don't implement VRAM blocking */

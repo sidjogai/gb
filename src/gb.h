@@ -184,15 +184,7 @@ struct ppu {
                 u8 tile_id;
                 u8 bitplane0;
                 u8 bitplane1;
-                enum fetcher_state {
-                        FETCH_TILE_ID_IDLE,
-                        FETCH_TILE_ID,
-                        FETCH_BITPLANE0_IDLE,
-                        FETCH_BITPLANE0,
-                        FETCH_BITPLANE1_IDLE,
-                        FETCH_BITPLANE1,
-                        PUSH,
-                } state;
+                fetcher fn;
         } bg_fetcher, obj_fetcher;
         enum active_fetcher {BG_FETCHER, OBJ_FETCHER} active_fetcher;
 
@@ -204,7 +196,6 @@ struct ppu {
                 } entries[8];
                 int len;
                 int head;
-                /* bool active; /\* whether pixels are popped from fifo each dot *\/ */
         } bg_fifo, obj_fifo;
 
         int dots_since_scanline_started;
