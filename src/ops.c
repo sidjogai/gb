@@ -1,3 +1,25 @@
+#ifdef GB_TRACE
+/* https://github.com/wheremyfoodat/Gameboy-logs */
+#define TRACE(...)                                              \
+        do {                                                    \
+                struct registers r_ = cpu->regs;                \
+                printf("A: %.02X F: %.02X B: %.02X C: %.02X "   \
+                       "D: %.02X E: %.02X H: %.02X L: %.02X "   \
+                       "SP: %.04X PC: 00:%.04X "                \
+                       "(%.02X %.02X %.02X %.02X) IME %x IE %x IF %x ",            \
+                       r_.a, r_.f, r_.b, r_.c, r_.d,            \
+                       r_.e, r_.h, r_.l, r_.sp, r_.pc,          \
+                       read_mem(cpu->mem, cpu->regs.pc),        \
+                       read_mem(cpu->mem, cpu->regs.pc + 1),    \
+                       read_mem(cpu->mem, cpu->regs.pc + 2),    \
+                       read_mem(cpu->mem, cpu->regs.pc + 3), cpu->ime.enabled, read_mem(cpu->mem, 0xffff), read_mem(cpu->mem, 0xff0f)); \
+                printf(__VA_ARGS__);                            \
+                putchar('\n');                                  \
+        } while(0)
+#else
+#define TRACE(...) ;
+#endif
+
 #define to_u16(msb, lsb) ((u16)(((msb) << 8) | (lsb)))
 
 /* ====================== Misc / control instructions ======================= */
@@ -18,17 +40,14 @@ static noreturn void stop(struct cpu *cpu)
 /* di: 1 byte, 4 cycles */
 static void di(struct cpu *cpu)
 {
-        cpu->ime.tick    = cpu->tick;
-        cpu->ime.enabled = 0;
-
+        cpu->ime = false;
         TRACE("di");
 }
 
 /* ei: 1 byte, 4 cycles */
 static void ei(struct cpu *cpu)
 {
-        cpu->ime.tick = cpu->tick + 4;
-
+        cpu->last_instr_was_ei = true;
         TRACE("ei");
 }
 
@@ -39,10 +58,9 @@ static void nop(struct cpu *cpu)
 }
 
 /* invalid: 1 byte, 4 cycles */
-/* static noreturn void invalid(struct cpu *cpu) */
-static  void invalid(struct cpu *cpu)
+static noreturn void invalid(struct cpu *cpu)
 {
-        ;
+        die("invalid opcode %d\n", cpu->op);
 }
 
 /* ============================= Jumps / Calls ============================== */
@@ -1722,7 +1740,7 @@ static void dispatch_op(struct cpu *cpu, u8 op) {
         case 0xF3: di(cpu);                       break;
         case 0xF4: invalid(cpu);                  break;
         case 0xF5: push_r16stk(cpu, REG_AF);      break;
-        case 0xF6: or_imm8(cpu);                break;
+        case 0xF6: or_imm8(cpu);                  break;
         case 0xF7: rst_tgt3(cpu, 0x30);           break;
         case 0xF8: ld_hl_sp_imm8(cpu);            break;
         case 0xF9: ld_sp_hl(cpu);                 break;

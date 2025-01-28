@@ -2,7 +2,7 @@ static void tick_cpu(struct cpu *cpu)
 {
         sync_timer(cpu->mem->timer, &cpu->mem->int_flag);
         sync_ppu(cpu->mem->ppu, &cpu->mem->int_flag);
-        cpu->tick += 4;
+        cpu->tick += 1;
 }
 
 static void cpu_write(struct cpu *cpu, u16 addr, u8 v)
@@ -161,7 +161,7 @@ static bool interrupt_pending(struct cpu *cpu)
 
 static void process_interrupts(struct cpu *cpu, u8 *op)
 {
-        if (!cpu->ime.enabled || !interrupt_pending(cpu))
+        if (!cpu->ime || !interrupt_pending(cpu))
                 return;
 
         int bit;
@@ -173,7 +173,7 @@ static void process_interrupts(struct cpu *cpu, u8 *op)
         }
 
         cpu->mem->int_flag &= (u8)(0x1F & ~(1 << bit));
-        cpu->ime.enabled = false;
+        cpu->ime = false;
 
         /* https://gist.github.com/SonoSooS/c0055300670d678b5ae8433e20bea595 */
 
@@ -204,15 +204,17 @@ static void step_cpu(struct cpu *cpu)
                         TRACE("/* cpu paused */");
                         tick_cpu(cpu);
                         return;
-                } 
+                }
         }
 
-        u8 op = cpu_fetch(cpu);
+        if (cpu->last_instr_was_ei) {
+                cpu->ime = 1;
+                cpu->last_instr_was_ei = false;
+        }
 
-        if (cpu->ime.tick == cpu->tick)
-                cpu->ime.enabled = 1;
+        dispatch_op(cpu, cpu->op);
 
-        process_interrupts(cpu, &op);
+        cpu->op = cpu_fetch(cpu);
 
-        dispatch_op(cpu, op);
+        process_interrupts(cpu, &cpu->op);
 }

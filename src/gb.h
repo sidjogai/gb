@@ -102,14 +102,16 @@ static void write_rom(struct mbc *, u8, u16);
 
 struct timer {
         u16 div;  /* FF04 - DIV: divider register (upper byte mapped) */
-        u8  tima; /* FF05 - TIMA: Timer counter */
-        u8  tma;  /* FF06 - TMA: Timer modulo */
-        u8  tac;  /* FF07 - TAC: Timer control */
+        u8  tima; /* FF05 - TIMA: timer counter */
+        u8  tma;  /* FF06 - TMA: timer modulo */
+        u8  tac;  /* FF07 - TAC: timer control */
 
         bool prev_and_result;   /* last result of DIV counter & timer_enabled */
         bool tima_overflowed;   /* reset when TIMA is reloaded */
         bool tima_reloaded;     /* whether TIMA was reloaded this cycle */
         int  cycles_since_tima_overflow; /* m cycles */
+
+        u8 *interrupt_flag;
 };
 
 static void sync_timer(struct timer *, u8 *interrupt_flag);
@@ -117,28 +119,6 @@ static void write_timer(struct timer *, u8, u16);
 static u8   read_timer(struct timer *, u16);
 
 /* ================================= cpu.c ================================== */
-
-#ifdef GB_TRACE
-/* https://github.com/wheremyfoodat/Gameboy-logs */
-#define TRACE(...)                                                       \
-        do {                                                             \
-                struct registers r_ = cpu->regs;                         \
-                printf("A: %.02X F: %.02X B: %.02X C: %.02X "            \
-                       "D: %.02X E: %.02X H: %.02X L: %.02X "            \
-                       "SP: %.04X PC: 00:%.04X "                         \
-                       "(%.02X %.02X %.02X %.02X) ",                     \
-                       r_.a, r_.f, r_.b, r_.c, r_.d,                     \
-                       r_.e, r_.h, r_.l, r_.sp, r_.pc,                   \
-                       read_mem(cpu->mem, cpu->regs.pc, cpu->tick),      \
-                       read_mem(cpu->mem, cpu->regs.pc + 1, cpu->tick),  \
-                       read_mem(cpu->mem, cpu->regs.pc + 2, cpu->tick),  \
-                       read_mem(cpu->mem, cpu->regs.pc + 3, cpu->tick)); \
-                printf(__VA_ARGS__);                                     \
-                putchar('\n');                                           \
-        } while(0)
-#else
-#define TRACE(...) ;
-#endif
 
 struct cpu {
         tick tick;
@@ -151,14 +131,19 @@ struct cpu {
                 union { u16 pc; struct { u8 pc_lsb; u8 pc_msb; }; };
                 union { u16 sp; struct { u8 sp_lsb; u8 sp_msb; }; };
         } regs;
-        struct ime_with_tick {
-                u64  tick;
-                bool enabled;
-        } ime;
+        u8 op; /* last fetched op code */
+
+        /* struct ime_with_tick { */
+        /*         u64  tick; */
+        /*         bool enabled; */
+        /* } ime; */
+        u8 ime; /* IME: interrupt master enable flag [write only] */
+
+        bool last_instr_was_ei;
         bool is_paused; /* halt */
 };
 
-static void tick_cpu(struct cpu *cpu);
+static void tick_cpu(struct cpu *);
 
 /* ================================= ppu.c ================================== */
 

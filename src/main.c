@@ -66,7 +66,6 @@ static u32 sprites_buf[(8 * 10) * (8 * 4)];
 static u32 tile_data_buf[(8 * 16 + 15) * (8 * 24 + 23)];
 static u32 info_buf[(8 * 20) *  (8 * 8)];
 
-
 static u8 rom_buf[8 * 1024 * 1024]; /* size of the largest gameboy ROM */
 static u8 external_ram[128 * 1024]; /* max external RAM */
 

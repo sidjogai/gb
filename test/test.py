@@ -17,16 +17,16 @@ BLARGG_TESTS = [
 ]
 
 MOONEYE_TESTS = [
-    "mooneye/acceptance/add_sp_e_timing.gb", 
-    "mooneye/acceptance/call_cc_timing.gb", 
-    "mooneye/acceptance/call_cc_timing2.gb", 
-    "mooneye/acceptance/call_timing.gb", 
-    "mooneye/acceptance/call_timing2.gb", 
-    "mooneye/acceptance/di_timing-GS.gb", 
-    "mooneye/acceptance/div_timing.gb", 
-    "mooneye/acceptance/ei_sequence.gb", 
-    "mooneye/acceptance/ei_timing.gb", 
-    "mooneye/acceptance/halt_ime0_ei.gb", 
+    "mooneye/acceptance/add_sp_e_timing.gb",
+    "mooneye/acceptance/call_cc_timing.gb",
+    "mooneye/acceptance/call_cc_timing2.gb",
+    "mooneye/acceptance/call_timing.gb",
+    "mooneye/acceptance/call_timing2.gb",
+    "mooneye/acceptance/di_timing-GS.gb",
+    "mooneye/acceptance/div_timing.gb",
+    "mooneye/acceptance/ei_sequence.gb",
+    "mooneye/acceptance/ei_timing.gb",
+    "mooneye/acceptance/halt_ime0_ei.gb",
     "mooneye/acceptance/halt_ime0_nointr_timing.gb",
     "mooneye/acceptance/halt_ime1_timing.gb",
     "mooneye/acceptance/halt_ime1_timing2-GS.gb",
@@ -34,7 +34,7 @@ MOONEYE_TESTS = [
     "mooneye/acceptance/intr_timing.gb",
     "mooneye/acceptance/jp_cc_timing.gb",
     "mooneye/acceptance/jp_timing.gb",
-    "mooneye/acceptance/ld_hl_sp_e_timing.gb", 
+    "mooneye/acceptance/ld_hl_sp_e_timing.gb",
     "mooneye/acceptance/oam_dma_restart.gb",
     "mooneye/acceptance/oam_dma_start.gb",
     "mooneye/acceptance/oam_dma_timing.gb",
@@ -121,16 +121,29 @@ def compile(cmd):
     if result.returncode != 0:
         sys.exit(1)
 
-def run_tests(tests):
+def run_tests(tests, quiet):
+    npass = 0
     for name in tests:
-        result = subprocess.run(["./gb-test", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if quiet:
+            result = subprocess.run(["./gb-test", name, "-q"],
+                                    stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL)
+        else:
+            result = subprocess.run(["./gb-test", name],
+                                    stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL)
+
         if result.returncode == 11:
+            npass += 1
             msg = "\033[92mPASS\033[0m" if sys.stdout.isatty() else "PASS"
         elif result.returncode == 13:
             msg = "\033[91mFAIL\033[0m" if sys.stdout.isatty() else "FAIL"
+        elif result.returncode == 15:
+            msg = "\033[38;5;214mASSERT\033[0m" if sys.stdout.isatty() else "ASSERT"
         else:
             msg = "\033[7;91mCRASH\033[0m" if sys.stdout.isatty() else "CRASH"
-        print(f"{name:<50}{' ':>16}{msg}")
+        print(f"{name:<60}{' ':>10}{msg}")
+    print(f"{npass} / {len(tests)} tests passed")
 
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "fetch":
@@ -141,7 +154,8 @@ def main():
     tests  = [test for test in BLARGG_TESTS + MOONEYE_TESTS if search in test]
 
     compile("make")
-    run_tests(tests)
+    quiet = len(sys.argv) > 2 and sys.argv[2] == "-q"
+    run_tests(tests, quiet)
 
 if __name__ == "__main__":
     main()

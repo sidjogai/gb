@@ -133,4 +133,3 @@ static u8 read_mem(struct mem *mem, u16 addr)
                 die("read_mem: invalid address $%.04x", addr);
         return v;
 }
-

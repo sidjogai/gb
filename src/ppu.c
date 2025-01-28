@@ -1,11 +1,10 @@
-
-
 #define dbg(...) do {                                           \
                 printf("tick = %lld ", *TICK / 4);                  \
                 printf("[%s, oam blocking %s] ", __func__, ppu->oam_access_blocked ? "ON" : "OFF"); \
                 printf(__VA_ARGS__);                            \
         } while(0)
 
+#undef dbg
 #define dbg(...) ;
 
 /* static bool ppu_loggin_enabled = true; */
@@ -227,7 +226,7 @@ static void clock_fifos(struct ppu *ppu)
 {
         if (ppu->new.obj_fetch_underway)
                 return;
-        
+
         struct fifo_entry bg = pop_fifo(&ppu->bg_fifo);
 
         if (ppu->obj_fifo.len > 0) {
@@ -454,7 +453,7 @@ static void drawing(struct ppu *ppu, u8 *interrupt_flag)
                 fetch_bg_bitplane1(ppu);
                 push_to_bg_fifo(ppu); /* FIFO empty; instant push */
                 tick(2);
-                
+
                 ppu->bg_fetcher.state = FETCH_TILE_ID;
         }
 
@@ -500,7 +499,7 @@ static void drawing(struct ppu *ppu, u8 *interrupt_flag)
 
         return;
 
- done:
+ /* done: */
         if (left != 0) {
                 ppu->new.q = left;
                 tick(left);
@@ -534,13 +533,13 @@ static void oam_dma(struct ppu *ppu)
                                 ppu->oam_access_blocked = true;
 
                                 dbg("blocking access\n");
-                                
+
                         }
-                                 
+
                         if (ppu->dma_in_progress) {
                                 dbg("gap (but still in old dma)\n");
                                 goto transfer;
-                                
+
                         }
                         dbg("gap\n");
                         return;
@@ -690,6 +689,7 @@ static u8 read_ppu_reg(struct ppu *ppu, u16 addr)
         case SCX_ADDR:
                 return ppu->scx;
         case LY_ADDR:
+                /* return 0x90; */
                 return ppu->ly;
         case LYC_ADDR:
                 return ppu->lyc;

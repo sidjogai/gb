@@ -7,8 +7,8 @@ static void skip_bootrom(struct gameboy *gb)
         cpu->regs.bc = 0x0013;
         cpu->regs.de = 0x00D8;
         cpu->regs.hl = 0x014D;
-        cpu->regs.sp = 0xFFFE;
         cpu->regs.pc = 0x0100;
+        cpu->regs.sp = 0xFFFE;
 
         cpu->mem->div = 0xAB << 8;
 
@@ -17,6 +17,11 @@ static void skip_bootrom(struct gameboy *gb)
         write_mem(cpu->mem, 0xF8, TAC_ADDR);
         write_mem(cpu->mem, 0xE1, REG_IF_ADDR);
         write_mem(cpu->mem, 0x00, REG_IE_ADDR);
+
+        write_mem(cpu->mem, 0x91, LCDC_ADDR);
+        write_mem(cpu->mem, 0x85, STAT_ADDR);
+        gb->ppu.dma = 0xFF;
+        write_mem(cpu->mem, 0xFC, BGP_ADDR);
 }
 
 static void load_bootrom(struct gameboy *gb, const char *filename)
@@ -56,7 +61,7 @@ static void init_gb(struct gameboy *gb,
         gb->mbc.rom = rom_buf;
         gb->mbc.external_ram = external_ram_buf;
         gb->mbc.mbc1.bank1 = 1;
-        
+
         memcpy(gb->ppu.palette, palette, sizeof gb->ppu.palette);
 }
 
@@ -71,7 +76,7 @@ static enum mbc_type parse_mbc_type(u8 v)
         default: die("Unsupported MBC type %d\n", v);
         }
 }
-                
+
 static int parse_rom_banks(u8 v)
 {
         if (v > 0x8)

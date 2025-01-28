@@ -1,5 +1,6 @@
 static void sync_timer(struct timer *t, u8 *interrupt_flag)
 {
+        t->interrupt_flag = interrupt_flag;
         /* https://github.com/Hacktix/GBEDG/blob/master/timers/index.md */
 
         bool div_bit, tima_enabled, and_result;
@@ -10,7 +11,7 @@ static void sync_timer(struct timer *t, u8 *interrupt_flag)
 
         for (int i = 0; i < 4; i++) {
                 t->div++;
- 
+
                 div_bit      = (t->div >> bits[t->tac & 0x3]) & 1;
                 tima_enabled = (t->tac >> 2) & 1;
                 and_result     = div_bit && tima_enabled;
@@ -21,19 +22,18 @@ static void sync_timer(struct timer *t, u8 *interrupt_flag)
                         /* after overflow, TIMA contains a zero value for 4
                            cycles, so don't update it immediately */
                         if (t->tima == 0) {
-                                assert(i == 3);
                                 t->tima_overflowed = true;
                                 t->cycles_since_tima_overflow = 0;
                         }
                 }
                 assert(t->tima == 0 || !t->tima_overflowed);
-                       
+
                 if (t->tima_overflowed && t->cycles_since_tima_overflow > 0) {
                         t->tima_overflowed = false;
                         t->tima = t->tma;
                         *interrupt_flag = (1U << 2);
                         t->tima_reloaded = true;
-                } 
+                }
                 t->prev_and_result = and_result;
         }
         t->cycles_since_tima_overflow++;

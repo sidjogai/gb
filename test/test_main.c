@@ -31,9 +31,13 @@ typedef int      dot;
 
 static u64 *TICK;
 
+#define SUCCESS_CODE 11
+#define FAILURE_CODE 13
+#define ASSERT_FAILURE_CODE 15
+
 #define len(a) ((int)(sizeof(a) / sizeof(*a)))
 
-#define assert(expr) SDL_assert(expr)
+#define assert(expr) do { if(!(expr)) exit(ASSERT_FAILURE_CODE); } while (0)
 
 #define die(...)                                                            \
         do {                                                                \
@@ -42,6 +46,7 @@ static u64 *TICK;
         } while (0)
 
 #include "../src/gb.h"
+
 
 #include "../src/ppu.c"
 #include "../src/cpu.c"
@@ -57,12 +62,42 @@ static u32 gb_buf[160 * 144];
 
 static u8 rom_buf[8 * 1024 * 1024]; /* size of the largest gameboy ROM */
 static u8 external_ram[128 * 1024]; /* max external RAM */
-        
+
 static u32 palette[]  = {0xFFFFFFFF, 0xFFB6B6B6, 0xFF676767, 0xFF000000};
+
+static void early_exit(struct cpu *cpu)
+{
+        bool inf_loop = read_mem(cpu->mem, cpu->regs.pc) == 0x18 /* jr */ &&
+                read_mem(cpu->mem, cpu->regs.pc + 1) == 0xFE; /* -2 */
+
+        if (inf_loop) {
+                if (cpu->regs.b == 3 && cpu->regs.c == 5 &&
+                    cpu->regs.d == 8 && cpu->regs.e == 13 &&
+                    cpu->regs.h == 21 && cpu->regs.l == 34)
+                        exit(SUCCESS_CODE);
+                else
+                        exit(FAILURE_CODE);
+        }
+}
 
 int main(int argc, char *argv[])
 {
         char *rom = argv[1];
+
+        struct gameboy gb;
+        init_gb(&gb, gb_buf, palette, external_ram, rom_buf);
+        TICK = &gb.cpu.tick;
+
+        skip_bootrom(&gb);
+
+        load_rom(&gb, rom);
+
+        if (argc > 2 && strcmp(argv[2], "-q") == 0) {
+                for (;;) {
+                        step_cpu(&gb.cpu);
+                        early_exit(&gb.cpu);
+                }
+        }
 
         struct window gb_window = {
                 .title  = "gb",
@@ -72,26 +107,22 @@ int main(int argc, char *argv[])
                 .buf    = gb_buf,
                 .shown = true,
         };
-        
+
         if (SDL_Init(SDL_INIT_VIDEO) < 0)
                 sdl_fail();
         atexit(SDL_Quit);
 
         init_window(&gb_window);
 
-        struct gameboy gb;
+
 
         u64 frame;
 
-        init_gb(&gb, gb_buf, palette, external_ram, rom_buf);
-        TICK = &gb.cpu.tick;
-
-        skip_bootrom(&gb);
-
-        load_rom(&gb, rom);
         frame = 1;
 
+#ifdef GB_PROFILE
         u64 total_ns = 0;
+#endif
 
         for (SDL_Event event; ; frame++) {
                 if (SDL_PollEvent(&event)) {
@@ -99,31 +130,33 @@ int main(int argc, char *argv[])
                         case SDL_KEYDOWN:
                                 switch (event.key.keysym.sym) {
                                 case SDLK_ESCAPE:
-                                        return 13; /* fail */
+                                        exit(FAILURE_CODE);
                                 case SDLK_SPACE:;
 
+#ifdef GB_PROFILE
                                         u64 avg_ns = total_ns / frame;
                                         u64 avg_fps = 1000000000 / avg_ns;
-#ifdef GB_PROFILE
+
                                         printf("frames = %llu, avg fps = %llu\n",
                                                frame, avg_fps);
 #endif
-                                       return 11; /* pass */
+                                        exit(SUCCESS_CODE);
                                 }
                         }
                 }
 
+#ifdef GB_PROFILE
                 u64 frame_start = clock_ns();
+#endif
 
                 while(gb.cpu.tick <= frame * 70224)
                         step_cpu(&gb.cpu);
 
-
+#ifdef GB_PROFILE
                 u64 delta = clock_ns() - frame_start;
                 total_ns += delta;
                 double ms = delta / 1E6;
                 u64 fps = 1000000000 / delta;
-#ifdef GB_PROFILE
                 printf("frame %llu - %f ms (= %llu fps)\n", frame, ms, fps);
 #endif
 
