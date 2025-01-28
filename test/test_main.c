@@ -42,6 +42,7 @@ static u64 *FRAME;
 #define LOG_PPU_LYC_WRITE   0
 #define LOG_PPU_BGP_WRITE   0
 #define LOG_PPU_STAT_WRITE  0
+#define LOG_PPU_SCX_WRITE  0
 #define LOG_PPU_LCDC_WRITE  0
 #define LOG_PPU_VBLANK_IRQ  0
 #define LOG_PPU_STAT_IRQ    0
@@ -65,7 +66,6 @@ static u64 *FRAME;
         } while (0)
 
 #include "../src/gb.h"
-
 
 #include "../src/ppu.c"
 #include "../src/cpu.c"

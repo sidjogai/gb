@@ -10,7 +10,7 @@ static void skip_bootrom(struct gameboy *gb)
         cpu->regs.pc = 0x0100;
         cpu->regs.sp = 0xFFFE;
 
-        cpu->mem->div = 0xAB << 8;
+        gb->timer.div = 0xAB << 8;
 
         write_mem(cpu->mem, 0x00, TIMA_ADDR);
         write_mem(cpu->mem, 0x00, TMA_ADDR);
@@ -45,23 +45,25 @@ static void init_gb(struct gameboy *gb,
 {
         memset(gb, 0, sizeof *gb);
 
-        gb->cpu.mem     = &gb->mem;
-        gb->ppu.mem     = &gb->mem;
-        gb->mem.timer   = &gb->timer;
-        gb->mem.ppu     = &gb->ppu;
-        gb->mem.joypad  = &gb->joypad;
-        gb->mem.mbc     = &gb->mbc;
-        gb->mem.bootrom = gb->bootrom;
+        gb->cpu.mem              = &gb->mem;
+        gb->ppu.mem              = &gb->mem;
+        gb->mem.timer            = &gb->timer;
+        gb->mem.ppu              = &gb->ppu;
+        gb->mem.joypad           = &gb->joypad;
+        gb->mem.mbc              = &gb->mbc;
+        gb->mem.bootrom          = gb->bootrom;
+        gb->mem.interrupt_enable = &gb->cpu.interrupt_enable;
+        gb->mem.interrupt_flag   = &gb->cpu.interrupt_flag;
 
-        gb->ppu.mode        = OAM_SCAN;
-        gb->ppu.display_buf = display_buf;
+        gb->ppu.mode            = OAM_SCAN;
+        gb->ppu.display_buf     = display_buf;
         gb->ppu.vram_accessible = true;
 
         gb->mem.bootrom_disabled = true;
 
-        gb->mbc.rom = rom_buf;
+        gb->mbc.rom          = rom_buf;
         gb->mbc.external_ram = external_ram_buf;
-        gb->mbc.mbc1.bank1 = 1;
+        gb->mbc.mbc1.bank1   = 1;
 
         memcpy(gb->ppu.palette, palette, sizeof gb->ppu.palette);
 }
@@ -118,3 +120,5 @@ static void load_rom(struct gameboy *gb, const char *path)
         }
         f->close(f);
 }
+
+

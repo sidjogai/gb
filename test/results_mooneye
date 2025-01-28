@@ -1,4 +1,4 @@
-45 / 66 tests passed
+49 / 66 tests passed
 
 mooneye/acceptance/add_sp_e_timing.gb                        PASS
 mooneye/acceptance/bits/mem_oam.gb                           PASS
@@ -11,14 +11,14 @@ mooneye/acceptance/call_cc_timing.gb                         PASS
 mooneye/acceptance/call_cc_timing2.gb                        PASS
 mooneye/acceptance/call_timing.gb                            PASS
 mooneye/acceptance/call_timing2.gb                           PASS
-mooneye/acceptance/di_timing-GS.gb                           FAIL
+mooneye/acceptance/di_timing-GS.gb                           PASS
 mooneye/acceptance/div_timing.gb                             PASS
 mooneye/acceptance/ei_sequence.gb                            PASS
 mooneye/acceptance/ei_timing.gb                              PASS
-mooneye/acceptance/halt_ime0_ei.gb                           FAIL
-mooneye/acceptance/halt_ime0_nointr_timing.gb                FAIL
-mooneye/acceptance/halt_ime1_timing.gb                       FAIL
-mooneye/acceptance/halt_ime1_timing2-GS.gb                   FAIL
+mooneye/acceptance/halt_ime0_ei.gb                           PASS
+mooneye/acceptance/halt_ime0_nointr_timing.gb                PASS
+mooneye/acceptance/halt_ime1_timing.gb                       PASS
+mooneye/acceptance/halt_ime1_timing2-GS.gb                   PASS
 mooneye/acceptance/if_ie_registers.gb                        PASS
 mooneye/acceptance/instr/daa.gb                              PASS
 mooneye/acceptance/interrupts/ie_push.gb                     FAIL
@@ -34,12 +34,12 @@ mooneye/acceptance/oam_dma_start.gb                          PASS
 mooneye/acceptance/oam_dma_timing.gb                         PASS
 mooneye/acceptance/pop_timing.gb                             PASS
 mooneye/acceptance/ppu/hblank_ly_scx_timing-GS.gb            FAIL
-mooneye/acceptance/ppu/intr_1_2_timing-GS.gb                 FAIL
-mooneye/acceptance/ppu/intr_2_0_timing.gb                    PASS
+mooneye/acceptance/ppu/intr_1_2_timing-GS.gb                 PASS
+mooneye/acceptance/ppu/intr_2_0_timing.gb                    FAIL
 mooneye/acceptance/ppu/intr_2_mode0_timing.gb                FAIL
 mooneye/acceptance/ppu/intr_2_mode0_timing_sprites.gb        FAIL
-mooneye/acceptance/ppu/intr_2_mode3_timing.gb                PASS
-mooneye/acceptance/ppu/intr_2_oam_ok_timing.gb               FAIL
+mooneye/acceptance/ppu/intr_2_mode3_timing.gb                FAIL
+mooneye/acceptance/ppu/intr_2_oam_ok_timing.gb               CRASH
 mooneye/acceptance/ppu/lcdon_timing-GS.gb                    FAIL
 mooneye/acceptance/ppu/lcdon_write_timing-GS.gb              FAIL
 mooneye/acceptance/ppu/stat_irq_blocking.gb                  PASS

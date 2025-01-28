@@ -41,7 +41,7 @@ static void write_mem(struct mem *mem, u8 v, u16 addr)
         else if (addr < 0xFF0F)
                 invalid_write(v, addr);
         else if (addr == 0xFF0F)
-                mem->int_flag = v;
+                *mem->interrupt_flag = v;
         else if (addr <= 0xFF26)
                 ; /* TODO: audio */
         else if (addr < 0xFF30)
@@ -61,7 +61,7 @@ static void write_mem(struct mem *mem, u8 v, u16 addr)
         else if (addr <= 0xFFFE)
                 mem->hram[addr - HRAM_START] = v;
         else if (addr == 0xFFFF) {
-                mem->int_enable = v;
+                *mem->interrupt_enable = v;
         } else
                 die("write_mem: invalid address $%.04x", addr);
 }
@@ -104,7 +104,7 @@ static u8 read_mem(struct mem *mem, u16 addr)
                 invalid_read(addr);
         else if (addr == 0xFF0F)
                 /* bits 7-5 not wired so they read 1s */
-                v = mem->int_flag | 0xE0;
+                v = *mem->interrupt_flag | 0xE0;
         else if (addr <= 0xFF26)
                 ; // TODO audio
         else if (addr < 0xFF30)
@@ -124,7 +124,7 @@ static u8 read_mem(struct mem *mem, u16 addr)
         else if (addr <= 0xFFFE)
                 v = mem->hram[addr - HRAM_START];
         else if (addr == 0xFFFF) {
-                v = mem->int_enable;
+                v = *mem->interrupt_enable;
         } else
                 die("read_mem: invalid address $%.04x", addr);
         return v;

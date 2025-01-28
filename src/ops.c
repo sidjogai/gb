@@ -24,8 +24,12 @@
 /* halt: 1 byte, 4 cycles */
 static void halt(struct cpu *cpu)
 {
-        cpu->is_paused = true;
-        puts("halt");
+        cpu->halted = true;
+
+        if (!cpu->ime && interrupt_pending(cpu)) {
+                cpu->regs.pc--;
+        }
+
         TRACE("halt");
 }
 
@@ -221,9 +225,6 @@ static void rst_tgt3(struct cpu *cpu, u8 n)
 static void ld_r8_r8(struct cpu *cpu, enum reg dst, enum reg src)
 {
         u8 v = getreg8(cpu, src);
-
-        /* if (dst == REG_B && src == REG_B) */
-        /*         printf("ld e, b = %d", v); */
 
         setreg8(cpu, dst, v);
 

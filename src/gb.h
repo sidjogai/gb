@@ -45,25 +45,17 @@ enum addr {
 struct mem {
         u8   wram[mem_size(WRAM)];
         u8   hram[mem_size(HRAM)];
-        u8   int_enable;        /* interrupt enable register (0xFFFF) */
-        u8   int_flag;          /* interrupt flag (0xFF0F) */
-        u8   tma;               /* timer modulo (0xFF06) */
-        u16  div;
-        bool prev_result;
-        u8   tima;
-        tick last_tima_write;
-        bool is_timer_pending;
-        tick timer_irq;
-        u8   tac;               /* timer control (0xFF07) */
 
         u8  bootrom_disabled;   /* FF50 */
         u8 *bootrom;
+
+        u8 *interrupt_enable; /* CPU's interrupt enable */
+        u8 *interrupt_flag; /* CPU's interrupt flag */
 
         struct timer  *timer;
         struct ppu    *ppu;
         struct joypad *joypad;
         struct mbc    *mbc;
-
 };
 
 static void write_mem(struct mem *, u8, u16);
@@ -76,13 +68,9 @@ struct mbc {
         int rom_banks;          /* number of 16KiB ROM banks */
         int ram_banks;          /* number of 8KiB RAM banks */
 
-        /* int  rom_banks;    /\* number of 16KiB rom banks *\/ */
         int  ram_size;  /* external ram size / 1 KiB */
         u8 *rom;
         u8 *external_ram;
-
-        /* MBC1 specific fields */
-
 
         struct mbc1 {
                 u8 ram_enabled; /* set if 0xA written to 0000-1FFF */
@@ -109,7 +97,7 @@ struct timer {
         bool prev_and_result;   /* last result of DIV counter & timer_enabled */
         bool tima_overflowed;   /* reset when TIMA is reloaded */
         bool tima_reloaded;     /* whether TIMA was reloaded this cycle */
-        int  cycles_since_tima_overflow; /* m cycles */
+        int  cycles_since_tima_overflow;
 
         u8 *interrupt_flag;
 };
@@ -133,14 +121,14 @@ struct cpu {
         } regs;
         u8 op; /* last fetched op code */
 
-        /* struct ime_with_tick { */
-        /*         u64  tick; */
-        /*         bool enabled; */
-        /* } ime; */
         u8 ime; /* IME: interrupt master enable flag [write only] */
+        u8 interrupt_enable; /* FFFF - IE: Interrupt enable */
+        u8 interrupt_flag; /* FF0F — IF: Interrupt flag */
+        
 
         bool last_instr_was_ei;
-        bool is_paused; /* halt */
+        bool last_instr_was_halt;
+        bool halted;
 };
 
 static void tick_cpu(struct cpu *);

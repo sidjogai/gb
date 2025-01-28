@@ -102,7 +102,6 @@ static void tick_ppu(struct ppu *ppu, u8 *interrupt_flag)
 
         check_stat(ppu, interrupt_flag);
 
-
         ppu->dots_since_scanline_started++;
         ppu->dots_since_frame_started++;
 }
@@ -110,6 +109,8 @@ static void tick_ppu(struct ppu *ppu, u8 *interrupt_flag)
 
 static void init_new_scanline(struct ppu *ppu)
 {
+        /* set_oam_access(ppu, false); */
+        assert(ppu->vram_accessible);
 
         ppu->active_fetcher = BG_FETCHER;
 
@@ -120,8 +121,6 @@ static void init_new_scanline(struct ppu *ppu)
         memset(&ppu->bg_fifo, 0, sizeof ppu->bg_fifo);
         memset(&ppu->obj_fetcher, 0, sizeof ppu->obj_fetcher);
         memset(&ppu->bg_fetcher, 0, sizeof ppu->bg_fetcher);
-
-        set_vram_access(ppu, false);
 
         ppu->shift_count = 0;
         ppu->pixel_count = 0;
@@ -158,23 +157,25 @@ static void new_hblank(struct ppu *ppu, u8 *interrupt_flag)
 
 static void new_vblank(struct ppu *ppu, u8 *interrupt_flag)
 {
-        if (ppu->dots_since_scanline_started == 455) {
-                ppu->ly++;
+        if (ppu->ly == 153 && ppu->dots_since_scanline_started == 4) {
+                ppu->ly = 0;
                 update_coincidence_flag(ppu);
                 check_stat(ppu, interrupt_flag);
-                if (ppu->ly == 154) {
-                        ppu->ly = 0;
-                        ppu->lx = 0;
+        }
+
+        if (ppu->dots_since_scanline_started == 455) {
+                if (ppu->ly == 0) {
                         init_new_scanline(ppu);
                         switch_to_mode(ppu, OAM_SCAN);
-                        set_oam_access(ppu, false);
+                        
                         assert(ppu->dots_since_frame_started == 70223);
                         ppu->frame++;
                         ppu->dots_since_frame_started = -1;
                 } else {
-                        /* nothing */
+                        ppu->ly++;
+                        update_coincidence_flag(ppu);
+                        check_stat(ppu, interrupt_flag);
                 }
-                update_coincidence_flag(ppu);
                 ppu->dots_since_scanline_started = -1;
         }
 }
@@ -182,7 +183,6 @@ static void new_vblank(struct ppu *ppu, u8 *interrupt_flag)
 static void new_oam_scan(struct ppu *ppu)
 {
         /* TODO: Different behaviour after LCD re-enabled */
-
         assert(ppu->dots_since_scanline_started < 80);
 
         /* new OAM entry fetched every 2 dots */
@@ -190,6 +190,7 @@ static void new_oam_scan(struct ppu *ppu)
                 return;
 
         if (ppu->dots_since_scanline_started == 79) {
+                set_vram_access(ppu, false);
                 switch_to_mode(ppu, DRAWING);
         }
 }
@@ -224,47 +225,18 @@ static void push_to_fifo(struct fifo *fifo, struct fifo_entry e)
         fifo->len++;
 }
 
-#define weird ppu->ly >= 130 && ppu->ly <= 143 && 0
-
 static void fetch_bg_tile_id(struct ppu *ppu)
 {
-
-        u16 offs = 0x1800;
+        u8 nametable = ((ppu->lcdc >> 3) & 0x1);
+        u8 y         = (u8)(ppu->ly + ppu->scy) / 8;
+        u8 x         = (u8)(ppu->pixel_count + ppu->scx) / 8;
         
-        offs |= ((ppu->lcdc >> 3) & 0x1) << 10;
-        u8 ypart = (((u8)(ppu->ly + ppu->scy)) / 8);
-        u8 xpart = (((u8)(ppu->pixel_count + ppu->scx)) / 8);
-        offs |= ypart << 5;
-        offs |= xpart;
-        assert(ypart <= 0x1F);
-        assert(xpart <= 0x1F);
-        /* offs |= (((u8)(ppu->lyc + ppu->scy)) / 8) <<  */
-        
+        u16 offset = 0x1800 | nametable << 10 | y << 5 | x;
 
-
-
-        u8 nametable = (ppu->lcdc >> 3) & 1;
-        u8 x = (ppu->scx + ppu->pixel_count) / 8;
-        /* u8 x = (ppu->pixel_count + (ppu->scx / 8)) & 0x1F; */
-        u8 y = (ppu->ly + ppu->scy) & 0xF8;
-
-        u16 offset = 0x1800 | nametable << 10 | y << 2 | x;
-
-        assert(x <= 0x3F);
         assert(vram_offset_to_addr(offset) >= TILEMAP1_START &&
                vram_offset_to_addr(offset) <= TILEMAP2_END);
 
-        /* u16 tilemap_addr = ((ppu->lcdc >> 3) & 0x1) ? 0x1C00 : 0x1800; */
-
-        /* u16 x_offset = (ppu->pixel_count + (ppu->scx / 8)) & 0x1f; */
-        /* u16 y_offset = 32 * (((ppu->ly + ppu->scy) & 0xFF) / 8); */
-        /* uint16_t tilemap_offset = (x_offset + y_offset) & 0x3ff; */
-        /* tilemap_addr += tilemap_offset; */
-
-        ppu->bg_fetcher.tile_id = ppu->vram[offs];
-        
-        if (weird)
-                printf("Offset is %d, Fetched ID %d\n", offset, ppu->bg_fetcher.tile_id);
+        ppu->bg_fetcher.tile_id = ppu->vram[offset];
 }
 
 static u16 bitplane_formula(struct ppu *ppu, u8 tile_id)
@@ -284,9 +256,6 @@ static void fetch_bg_bitplane0(struct ppu *ppu)
         assert(vram_offset_to_addr(offset) >= TILE_DATA_START &&
                vram_offset_to_addr(offset) <= TILE_DATA_END);
 
-        if (weird)
-                printf("Bitplane 0 offset is %x\n", 0x8000 + offset);
-
         ppu->bg_fetcher.bitplane0 = ppu->vram[offset];
 }
 
@@ -297,9 +266,6 @@ static void fetch_bg_bitplane1(struct ppu *ppu)
 
         assert(vram_offset_to_addr(offset) >= TILE_DATA_START &&
                vram_offset_to_addr(offset) <= TILE_DATA_END);
-
-        if (weird)
-                printf("Bitplane 1 offset is %x\n", 0x8000 + offset);
 
         ppu->bg_fetcher.bitplane1 = ppu->vram[offset];
 }
@@ -325,12 +291,9 @@ static void new_drawing(struct ppu *ppu)
         /* printf("dots are %d lx is %d\n", ppu->dots_since_scanline_started, ppu->lx); */
 
         if (ppu->initial_fetch_completed) {
-                /* puts("here!"); */
                 assert(ppu->dots_since_scanline_started >= 86);
 
                 struct fifo_entry bg = pop_fifo(&ppu->bg_fifo);
-
-                /* printf("pixels dropped %d\n", ppu->scx_pixels_dropped); */
 
                 if (!ppu->scx_pixels_dropped &&
                     ppu->shift_count >= (ppu->scx & 0x7))
@@ -340,25 +303,18 @@ static void new_drawing(struct ppu *ppu)
 
                 /* fine horizontal scrolling */
                 if (ppu->scx_pixels_dropped) {
-                        /* printf("there!"); */
-                        /* actually push to the LCD */
                         if (ppu->pixel_count >= 8) {
                                 u8 color = (ppu->bgp >> (bg.color * 2)) & 0x3;
                                 if ((ppu->lcdc & 0x1) == 0)
                                         color = 0;
 
-                                /* color = ppu->dots_since_scanline_started % 2; */
+
                                 u32 gui_color = ppu->palette[color];
-                                /* if (ppu->ly == 130 || ppu->ly == 143) */
-                                /*         gui_color = 0xFFFF0000; */
                                 int pos = ppu->ly * 160 + ppu->lx;
                                 ppu->display_buf[pos] = gui_color;
                                 if (++ppu->lx == 160) {
-                                        /* printf("switched to hblank on dot %d, btw stat is %d\n", */
-                                        /*        ppu->dots_since_scanline_started, ppu->stat); */
                                         set_vram_access(ppu, true);
-                                        set_oam_access(ppu, true);
-
+                                        /* set_oam_access(ppu, true); */
 
                                         switch_to_mode(ppu, HBLANK);
                                         return;
@@ -367,8 +323,6 @@ static void new_drawing(struct ppu *ppu)
                         ppu->pixel_count++;
                 }
         }
-
-
 
         switch(ppu->bg_fetcher.state) {
         case FETCH_TILE_ID_IDLE: // 80, 86
@@ -413,14 +367,14 @@ static void new_drawing(struct ppu *ppu)
 /* NOTE: for now, don't implement VRAM blocking */
 static void write_vram(struct ppu *ppu, u8 v, u16 addr)
 {
-        ppu->vram[addr - VRAM_START] = v; /* NOTE! */
+        /* ppu->vram[addr - VRAM_START] = v; /\* NOTE! *\/ */
         if (ppu->vram_accessible)
                 ppu->vram[addr - VRAM_START] = v;
 }
 
 static u8 read_vram(struct ppu *ppu, u16 addr)
 {
-        return ppu->vram[addr - VRAM_START]; /* NOTE! */
+        /* return ppu->vram[addr - VRAM_START]; /\* NOTE! *\/ */
         return ppu->vram_accessible ? ppu->vram[addr - VRAM_START] : 0xFF;
 }
 

@@ -2,17 +2,13 @@ static void oam_dma(struct ppu *ppu);
 
 static void tick_cpu(struct cpu *cpu)
 {
-        sync_timer(cpu->mem->timer, &cpu->mem->int_flag);
-        /* sync_ppu(cpu->mem->ppu, &cpu->mem->int_flag); */
+        sync_timer(cpu->mem->timer, &cpu->interrupt_flag);
         oam_dma(cpu->mem->ppu);
 
-        tick_ppu(cpu->mem->ppu, &cpu->mem->int_flag);
-        tick_ppu(cpu->mem->ppu, &cpu->mem->int_flag);
-        tick_ppu(cpu->mem->ppu, &cpu->mem->int_flag);
-        tick_ppu(cpu->mem->ppu, &cpu->mem->int_flag);
-        /* sync_ppu(cpu->mem->ppu, &cpu->mem->int_flag); */
-        /* sync_ppu(cpu->mem->ppu, &cpu->mem->int_flag); */
-        /* sync_ppu(cpu->mem->ppu, &cpu->mem->int_flag); */
+        tick_ppu(cpu->mem->ppu, &cpu->interrupt_flag);
+        tick_ppu(cpu->mem->ppu, &cpu->interrupt_flag);
+        tick_ppu(cpu->mem->ppu, &cpu->interrupt_flag);
+        tick_ppu(cpu->mem->ppu, &cpu->interrupt_flag);
         cpu->tick += 1;
 }
 
@@ -167,7 +163,7 @@ static bool checkcond(struct cpu *cpu, enum cond c)
 
 static bool interrupt_pending(struct cpu *cpu)
 {
-        return (cpu->mem->int_enable & cpu->mem->int_flag) & 0x1F;
+        return (cpu->interrupt_enable & cpu->interrupt_flag) & 0x1F;
 }
 
 static void process_interrupts(struct cpu *cpu, u8 *op)
@@ -177,13 +173,13 @@ static void process_interrupts(struct cpu *cpu, u8 *op)
 
         int bit;
         for (bit = 0; bit <= 4; bit++) {
-                bool enabled   = (cpu->mem->int_enable >> bit) & 1;
-                bool requested = (cpu->mem->int_flag >> bit) & 1;
+                bool enabled   = (cpu->interrupt_enable >> bit) & 1;
+                bool requested = (cpu->interrupt_flag >> bit) & 1;
                 if (enabled && requested)
                         break;
         }
 
-        cpu->mem->int_flag &= (u8)(0x1F & ~(1 << bit));
+        cpu->interrupt_flag &= (u8)(0x1F & ~(1 << bit));
         cpu->ime = false;
 
         /* https://gist.github.com/SonoSooS/c0055300670d678b5ae8433e20bea595 */
@@ -207,18 +203,17 @@ static void dispatch_op(struct cpu *cpu, u8 op);
 
 static void step_cpu(struct cpu *cpu)
 {
-        /* TODO: implement halt properly and emulate halt bug */
-        if (cpu->is_paused) {
+        if (cpu->halted) {
                 if (interrupt_pending(cpu)) {
-                        puts("unpaused");
-                        cpu->is_paused = false;
+                        cpu->halted = false;
+                        process_interrupts(cpu, &cpu->op);
                 } else {
-                        TRACE("/* cpu paused */");
                         tick_cpu(cpu);
+                        TRACE("(cpu halted)");
                         return;
                 }
         }
-
+        
         if (cpu->last_instr_was_ei) {
                 cpu->ime = 1;
                 cpu->last_instr_was_ei = false;
