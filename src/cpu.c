@@ -5,6 +5,7 @@ static void tick_cpu(struct cpu *cpu)
         sync_timer(cpu->mem->timer, &cpu->mem->int_flag);
         /* sync_ppu(cpu->mem->ppu, &cpu->mem->int_flag); */
         oam_dma(cpu->mem->ppu);
+
         tick_ppu(cpu->mem->ppu, &cpu->mem->int_flag);
         tick_ppu(cpu->mem->ppu, &cpu->mem->int_flag);
         tick_ppu(cpu->mem->ppu, &cpu->mem->int_flag);
@@ -209,6 +210,7 @@ static void step_cpu(struct cpu *cpu)
         /* TODO: implement halt properly and emulate halt bug */
         if (cpu->is_paused) {
                 if (interrupt_pending(cpu)) {
+                        puts("unpaused");
                         cpu->is_paused = false;
                 } else {
                         TRACE("/* cpu paused */");

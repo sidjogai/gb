@@ -183,8 +183,6 @@ struct ppu {
 
         bool initial_fetch_completed; /* whether initial B01 completed */
 
-        u8 initial_delay; /* delay of 8 at the start of a scanline */
-
         bool prev_stat_line;
 
         /* bit 7 of LCDC is set after being unset */
@@ -205,8 +203,6 @@ struct ppu {
                 } state;
         } bg_fetcher, obj_fetcher;
         enum active_fetcher {BG_FETCHER, OBJ_FETCHER} active_fetcher;
-
-        bool finishing_bg_fetch;
 
         struct fifo {
                 struct fifo_entry {

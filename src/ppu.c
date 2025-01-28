@@ -1,3 +1,10 @@
+#define BIN_FMT "%c%c%c%c'%c%c%c%c"
+#define BIN(x)                                                  \
+        ('0' + ((x >> 7) & 0x1)), ('0' + ((x >> 6) & 0x1)),     \
+        ('0' + ((x >> 5) & 0x1)), ('0' + ((x >> 4) & 0x1)),     \
+        ('0' + ((x >> 3) & 0x1)), ('0' + ((x >> 2) & 0x1)),     \
+        ('0' + ((x >> 1) & 0x1)), ('0' + ((x >> 0) & 0x1))
+
 #define log_event(event, ...)                                           \
         do {                                                            \
                 if (PPU_LOGGING_ENABLED && LOG_PPU_##event) {           \
@@ -6,12 +13,14 @@
                                "ly = %3d, "                             \
                                "lx = %3d, "                             \
                                "dot = %3d "                             \
+                               "stat = "BIN_FMT" "                      \
                                "[%s]    \t",                            \
                                ppu->frame,                              \
                                ppu->mode,                               \
                                ppu->ly,                                 \
                                ppu->lx,                                 \
                                ppu->dots_since_scanline_started,        \
+                               BIN(ppu->stat),                          \
                                #event);                                 \
                         printf(__VA_ARGS__);                            \
                         putchar('\n');                                  \
@@ -54,7 +63,7 @@ static void oam_dma(struct ppu *ppu);
 static void new_oam_scan(struct ppu *ppu);
 static void new_drawing(struct ppu *ppu);
 static void new_hblank(struct ppu *ppu, u8 *interrupt_flag);
-static void new_vblank(struct ppu *ppu);
+static void new_vblank(struct ppu *ppu, u8 *interrupt_flag);
 
 static bool check_stat(struct ppu *ppu, u8 *interrupt_flag);
 
@@ -83,7 +92,7 @@ static void tick_ppu(struct ppu *ppu, u8 *interrupt_flag)
                 new_hblank(ppu, interrupt_flag);
                 break;
         case VBLANK:
-                new_vblank(ppu);
+                new_vblank(ppu, interrupt_flag);
                 break;
         }
 
@@ -103,9 +112,10 @@ static void init_new_scanline(struct ppu *ppu)
 {
 
         ppu->active_fetcher = BG_FETCHER;
+
         ppu->initial_fetch_completed = false;
         ppu->scx_pixels_dropped = false;
-        ppu->initial_delay = 0;
+
         memset(&ppu->obj_fifo, 0, sizeof ppu->obj_fifo);
         memset(&ppu->bg_fifo, 0, sizeof ppu->bg_fifo);
         memset(&ppu->obj_fetcher, 0, sizeof ppu->obj_fetcher);
@@ -130,9 +140,9 @@ static void new_hblank(struct ppu *ppu, u8 *interrupt_flag)
                 check_stat(ppu, interrupt_flag);
                 update_coincidence_flag(ppu);
                 check_stat(ppu, interrupt_flag);
-
-                /* pf("here"); */
                 ppu->ly++;
+                update_coincidence_flag(ppu);
+                check_stat(ppu, interrupt_flag);
 
                 if (ppu->ly == 144) {
                         switch_to_mode(ppu, VBLANK);
@@ -146,10 +156,12 @@ static void new_hblank(struct ppu *ppu, u8 *interrupt_flag)
         }
 }
 
-static void new_vblank(struct ppu *ppu)
+static void new_vblank(struct ppu *ppu, u8 *interrupt_flag)
 {
         if (ppu->dots_since_scanline_started == 455) {
                 ppu->ly++;
+                update_coincidence_flag(ppu);
+                check_stat(ppu, interrupt_flag);
                 if (ppu->ly == 154) {
                         ppu->ly = 0;
                         ppu->lx = 0;
@@ -212,19 +224,47 @@ static void push_to_fifo(struct fifo *fifo, struct fifo_entry e)
         fifo->len++;
 }
 
+#define weird ppu->ly >= 130 && ppu->ly <= 143 && 0
+
 static void fetch_bg_tile_id(struct ppu *ppu)
 {
-        u8 n = (ppu->lcdc >> 3) & 1;
+
+        u16 offs = 0x1800;
+        
+        offs |= ((ppu->lcdc >> 3) & 0x1) << 10;
+        u8 ypart = (((u8)(ppu->ly + ppu->scy)) / 8);
+        u8 xpart = (((u8)(ppu->pixel_count + ppu->scx)) / 8);
+        offs |= ypart << 5;
+        offs |= xpart;
+        assert(ypart <= 0x1F);
+        assert(xpart <= 0x1F);
+        /* offs |= (((u8)(ppu->lyc + ppu->scy)) / 8) <<  */
+        
+
+
+
+        u8 nametable = (ppu->lcdc >> 3) & 1;
         u8 x = (ppu->scx + ppu->pixel_count) / 8;
+        /* u8 x = (ppu->pixel_count + (ppu->scx / 8)) & 0x1F; */
         u8 y = (ppu->ly + ppu->scy) & 0xF8;
 
-        u16 offset = 0x1800 | n << 10 | y << 2 | x;
+        u16 offset = 0x1800 | nametable << 10 | y << 2 | x;
 
         assert(x <= 0x3F);
         assert(vram_offset_to_addr(offset) >= TILEMAP1_START &&
                vram_offset_to_addr(offset) <= TILEMAP2_END);
 
-        ppu->bg_fetcher.tile_id = ppu->vram[offset];
+        /* u16 tilemap_addr = ((ppu->lcdc >> 3) & 0x1) ? 0x1C00 : 0x1800; */
+
+        /* u16 x_offset = (ppu->pixel_count + (ppu->scx / 8)) & 0x1f; */
+        /* u16 y_offset = 32 * (((ppu->ly + ppu->scy) & 0xFF) / 8); */
+        /* uint16_t tilemap_offset = (x_offset + y_offset) & 0x3ff; */
+        /* tilemap_addr += tilemap_offset; */
+
+        ppu->bg_fetcher.tile_id = ppu->vram[offs];
+        
+        if (weird)
+                printf("Offset is %d, Fetched ID %d\n", offset, ppu->bg_fetcher.tile_id);
 }
 
 static u16 bitplane_formula(struct ppu *ppu, u8 tile_id)
@@ -244,6 +284,9 @@ static void fetch_bg_bitplane0(struct ppu *ppu)
         assert(vram_offset_to_addr(offset) >= TILE_DATA_START &&
                vram_offset_to_addr(offset) <= TILE_DATA_END);
 
+        if (weird)
+                printf("Bitplane 0 offset is %x\n", 0x8000 + offset);
+
         ppu->bg_fetcher.bitplane0 = ppu->vram[offset];
 }
 
@@ -254,6 +297,9 @@ static void fetch_bg_bitplane1(struct ppu *ppu)
 
         assert(vram_offset_to_addr(offset) >= TILE_DATA_START &&
                vram_offset_to_addr(offset) <= TILE_DATA_END);
+
+        if (weird)
+                printf("Bitplane 1 offset is %x\n", 0x8000 + offset);
 
         ppu->bg_fetcher.bitplane1 = ppu->vram[offset];
 }
@@ -303,6 +349,8 @@ static void new_drawing(struct ppu *ppu)
 
                                 /* color = ppu->dots_since_scanline_started % 2; */
                                 u32 gui_color = ppu->palette[color];
+                                /* if (ppu->ly == 130 || ppu->ly == 143) */
+                                /*         gui_color = 0xFFFF0000; */
                                 int pos = ppu->ly * 160 + ppu->lx;
                                 ppu->display_buf[pos] = gui_color;
                                 if (++ppu->lx == 160) {
@@ -450,16 +498,6 @@ static bool check_stat(struct ppu *ppu, u8 *interrupt_flag)
         return interrupt_pending;
 }
 
-/* NOTE: remove these later */
-/* What I have */
-
-#define BIN_FMT "%c%c%c%c'%c%c%c%c"
-#define BIN(x)                                                  \
-        ('0' + ((x >> 7) & 0x1)), ('0' + ((x >> 6) & 0x1)),     \
-        ('0' + ((x >> 5) & 0x1)), ('0' + ((x >> 4) & 0x1)),     \
-        ('0' + ((x >> 3) & 0x1)), ('0' + ((x >> 2) & 0x1)),     \
-        ('0' + ((x >> 1) & 0x1)), ('0' + ((x >> 0) & 0x1))
-
 static void write_ppu_reg(struct ppu *ppu, u8 v, u16 addr)
 {
         switch(addr) {
@@ -473,7 +511,7 @@ static void write_ppu_reg(struct ppu *ppu, u8 v, u16 addr)
                         log_event(LCD_TOGGLE, "LCD turned on");
 
                 log_event(LCDC_WRITE,
-                          "set to %d = "BIN_FMT" (was %d = "BIN_FMT")",
+                          "set to 0x%X = "BIN_FMT" (was 0x%X = "BIN_FMT")",
                           v, BIN(v), ppu->lcdc, BIN(ppu->lcdc));
 
                 if (!lcd_was_enabled && lcd_enabled) {
@@ -492,13 +530,15 @@ static void write_ppu_reg(struct ppu *ppu, u8 v, u16 addr)
                 ppu->stat = (v & ~0x7) | (ppu->stat & 0x7);
                 ppu->stat |= (1 << 7);
                 log_event(STAT_WRITE,
-                          "set to %d = "BIN_FMT" (was %d = "BIN_FMT")",
+                          "set to 0x%X = "BIN_FMT" (was 0x%X = "BIN_FMT")",
                           ppu->stat, BIN(ppu->stat), prev, BIN(prev));
                 break;
         case SCY_ADDR:
                 ppu->scy = v;
                 break;
         case SCX_ADDR:
+                log_event(SCX_WRITE, "set to %d = %x (was %d = %x)",
+                          v, v, ppu->scx, ppu->scx);
                 ppu->scx = v;
                 break;
         case LY_ADDR:

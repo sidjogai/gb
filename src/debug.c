@@ -87,7 +87,8 @@ static void draw_viewport_border(struct ppu *ppu, u32 buf[], u32 colour)
 static u8 * get_tile(struct ppu *ppu, u8 i)
 {
         u8   *tile_addr     = ppu->vram + i * 16;
-        bool  signed_method = i >= 127 && (ppu->lcdc & (1 << 4)) == 0;
+        bool  signed_method = (ppu->lcdc >> 4) & 0x1;
+        /* signed_method = true; */
 
         return signed_method ? tile_addr + 0x1000 : tile_addr;
 }

@@ -55,6 +55,7 @@ static void init_gb(struct gameboy *gb,
 
         gb->ppu.mode        = OAM_SCAN;
         gb->ppu.display_buf = display_buf;
+        gb->ppu.vram_accessible = true;
 
         gb->mem.bootrom_disabled = true;
 
