@@ -109,7 +109,6 @@ static u8   read_timer(struct timer *, u16);
 /* ================================= cpu.c ================================== */
 
 struct cpu {
-        tick tick;
         struct mem *mem;
         struct registers {
                 union { u16 af; struct { u8 f; u8 a; }; };
@@ -196,7 +195,7 @@ struct ppu {
 
         int dots_since_scanline_started;
         int dots_since_frame_started; /* only for assert */
-        int frame; /* only for assert */
+        int frame;
 
         bool oam_accessible;
         bool vram_accessible;
@@ -220,6 +219,9 @@ struct ppu {
         int  obj_index;         /* index into obj_buf for current OBJ */
 
         struct mem *mem; /* required for OAM DMA */
+
+        /* sync on vblank to avoid needing to store some PPU state */
+        bool save_file_requested;
 };
 
 static void sync_ppu(struct ppu *, u8 *interrupt_flag);

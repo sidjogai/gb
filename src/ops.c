@@ -41,8 +41,6 @@ static noreturn void stop(struct cpu *cpu)
 /* di: 1 byte, 4 cycles */
 static void di(struct cpu *cpu)
 {
-        if (LOG_CPU_EI_DI)
-                printf("[DI] interrupts disabled\n");
         cpu->ime = false;
         TRACE("di");
 }
@@ -50,8 +48,6 @@ static void di(struct cpu *cpu)
 /* ei: 1 byte, 4 cycles */
 static void ei(struct cpu *cpu)
 {
-        if (LOG_CPU_EI_DI)
-                printf("[EI] interrupts enabled on cycle %ld\n", cpu->tick);
         cpu->last_instr_was_ei = true;
         TRACE("ei");
 }

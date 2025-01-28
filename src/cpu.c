@@ -9,7 +9,6 @@ static void tick_cpu(struct cpu *cpu)
         tick_ppu(cpu->mem->ppu, &cpu->interrupt_flag);
         tick_ppu(cpu->mem->ppu, &cpu->interrupt_flag);
         tick_ppu(cpu->mem->ppu, &cpu->interrupt_flag);
-        cpu->tick += 1;
 }
 
 static void cpu_write(struct cpu *cpu, u16 addr, u8 v)

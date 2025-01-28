@@ -124,8 +124,110 @@ static void load_rom(struct gameboy *gb, const char *path)
         f->close(f);
 }
 
+#define do_for_gb_fields(code)                  \
+        code(mem.wram);                         \
+        code(mem.hram);                         \
+        code(mem.bootrom_disabled);             \
+        code(mbc.type);                         \
+        code(mbc.rom_banks);                    \
+        code(mbc.ram_banks);                    \
+        code(mbc.ram_size);                     \
+        code(mbc.mbc1.ram_enabled);             \
+        code(mbc.mbc1.bank1);                   \
+        code(mbc.mbc1.bank2);                   \
+        code(mbc.mbc1.mode);                    \
+        code(timer.div);                        \
+        code(timer.tima);                       \
+        code(timer.tma);                        \
+        code(timer.tac);                        \
+        code(timer.prev_and_result);            \
+        code(timer.tima_overflowed);            \
+        code(timer.tima_reloaded);              \
+        code(timer.cycles_since_tima_overflow); \
+        code(cpu.regs.af);                      \
+        code(cpu.regs.bc);                      \
+        code(cpu.regs.de);                      \
+        code(cpu.regs.hl);                      \
+        code(cpu.regs.pc);                      \
+        code(cpu.regs.sp);                      \
+        code(cpu.op);                           \
+        code(cpu.ime);                          \
+        code(cpu.interrupt_enable);             \
+        code(cpu.interrupt_flag);               \
+        code(cpu.last_instr_was_ei);            \
+        code(cpu.halted);                       \
+        code(cpu.halt_bug);                     \
+        code(ppu.vram);                         \
+        code(ppu.oam);                          \
+        code(ppu.lcdc);                         \
+        code(ppu.stat);                         \
+        code(ppu.scy);                          \
+        code(ppu.scx);                          \
+        code(ppu.ly);                           \
+        code(ppu.lyc);                          \
+        code(ppu.dma);                          \
+        code(ppu.bgp);                          \
+        code(ppu.obp0);                         \
+        code(ppu.obp1);                         \
+        code(ppu.wy);                           \
+        code(ppu.wx);                           \
+        code(ppu.cycles_since_dma_requested);   \
+        code(ppu.dma_offset);                   \
+        code(ppu.dma_in_progress);              \
+        code(ppu.dma_requested);                \
+        code(ppu.palette);                      \
+        code(ppu.prev_stat_line);               \
+        code(ppu.lcd_reenabled);                \
+        code(ppu.frame);                        \
+        code(ppu.oam_accessible);               \
+        code(ppu.vram_accessible);              \
+        code(ppu.mode);                         \
+
+#define write_struct_field(field) \
+        error += !f->write(f, &gb->field, sizeof gb->field, 1);
+#define read_struct_field(field) \
+        error += !f->read(f, &gb->field, sizeof gb->field, 1);
+/* for debugging */
+#define print_struct_field(field) printf(#field " = %d\n", gb->field);
 
 static void save_state(struct gameboy *gb, u8 *external_ram, const char *path)
 {
-        puts(path);
+        char *save_path;
+        SDL_asprintf(&save_path, "%s.save", path);
+
+        SDL_RWops *f = SDL_RWFromFile(save_path, "wb");
+
+        if (f == NULL) 
+                die("Error opening save file '%s' for writing\n", save_path);
+
+        int error = 0;
+
+        do_for_gb_fields(write_struct_field);
+        f->write(f, external_ram, sizeof external_ram, 1);
+
+        if (error)
+                die("Error writing save file '%s'", save_path);
+
+        f->close(f);
+}
+
+static void load_state(struct gameboy *gb, u8 *external_ram, const char *path)
+{
+        char *save_path;
+        SDL_asprintf(&save_path, "%s.save", path);
+
+        SDL_RWops *f = SDL_RWFromFile(save_path, "rb");
+        
+        if (f == NULL)
+                die("Error opening save file '%s' for reading\n", save_path);
+
+        int error = 0;
+
+        do_for_gb_fields(read_struct_field);
+        f->read(f, external_ram, sizeof external_ram, 1);
+
+        if (error)
+                die("Error reading save file '%s'", save_path);
+        
+        f->close(f);
 }

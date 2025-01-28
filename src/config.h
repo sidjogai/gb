@@ -19,7 +19,8 @@ enum keymap {
         TARGET_4X_SPEED          = '4',
         TARGET_5X_SPEED          = '5',
 
-        SAVE = '!',
+        SAVE                     = 'v',
+        LOAD                     = 'o',
 
         TOGGLE_BG_MAP_WINDOW     = 'b',
         TOGGLE_INFO_WINDOW       = 'i',
@@ -59,8 +60,6 @@ static u32 palettes[][4] = {
 #define LOG_PPU_VRAM_ACCESS 0 /* VRAM read/write access changed */
 
 #define LOG_PPU_MODE3_TIMING 0 /* */
-#define LOG_PPU_LCD_TOGGLE  0 /* LCD turned on or off */
+#define LOG_PPU_LCD_TOGGLE   0 /* LCD turned on or off */
 
 #define TRACE_CPU 0 /* Log CPU state after each instruction */
-
-#define LOG_CPU_EI_DI 0 /* Interrupts enabled or disabled */

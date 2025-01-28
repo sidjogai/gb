@@ -28,7 +28,6 @@ typedef uint8_t  u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
-typedef u64      tick;
 typedef int      m_cycle;
 typedef int      t_cycle;
 typedef int      dot;
@@ -120,7 +119,7 @@ static struct window windows[] = {
         },
 };
 
-#define DO_GB_KEYMAP(code)                                      \
+#define do_for_gb_keymap(code)                                  \
         code(KEY_A,      gb.joypad.state[A] = key_down)         \
         code(KEY_B,      gb.joypad.state[B] = key_down)         \
         code(KEY_START,  gb.joypad.state[START] = key_down)     \
@@ -130,12 +129,12 @@ static struct window windows[] = {
         code(KEY_DOWN,   gb.joypad.state[DOWN] = key_down)      \
         code(KEY_UP,     gb.joypad.state[UP] = key_down)
 
-#define DO_MISC_KEYMAP(code)                                    \
+#define do_for_misc_keymap(code)                                \
         code(QUIT, goto quit)                                   \
         code(RESET, goto reset)                                 \
-        code(SAVE,                                              \
-             save_state(&gb, external_ram, "gb-out"))           \
-        code(TARGET_UNCAPPED_SPEED, limit_fps = 0;)             \
+             code(LOAD, load_state(&gb, external_ram, rom);)    \
+        code(SAVE, save_requested = true;)                      \
+        code(TARGET_UNCAPPED_SPEED, limit_fps = false;)         \
         code(TARGET_1X_SPEED,                                   \
              target_fps = 60;                                   \
              target_duration = 1000000000 / target_fps;)        \
@@ -197,6 +196,8 @@ int main(int argc, char *argv[])
         u32  *palette    = palettes[0];
         int   target_fps = 60;
 
+        bool save_requested = false;
+
         (void)bootrom;
 
         for (int opt; (opt = getopt(argc, argv, "b:p:s:dF")) != -1; )
@@ -234,7 +235,6 @@ int main(int argc, char *argv[])
 
  reset:
         init_gb(&gb, gb_buf, palette, external_ram, rom_buf);
-        TICK = &gb.cpu.tick;
 
         skip_bootrom(&gb);
 
@@ -243,7 +243,7 @@ int main(int argc, char *argv[])
 
         u64 target_duration = 1000000000 / target_fps;
 
-        for (; ; frame++) {
+        for (;;) {
                 u64 start = clock_ns();
 
                 bool key_down;
@@ -252,22 +252,26 @@ int main(int argc, char *argv[])
                         switch (event.type) {
                         case SDL_KEYDOWN:
                                 switch (event.key.keysym.sym) {
-                                        DO_GB_KEYMAP(handle_gb_key_down);
-                                        DO_MISC_KEYMAP(handle_misc_key_down);
+                                        do_for_gb_keymap(handle_gb_key_down);
+                                        do_for_misc_keymap(handle_misc_key_down);
                                 }
                                 break;
                         case SDL_KEYUP:
                                 switch (event.key.keysym.sym) {
-                                        DO_GB_KEYMAP(handle_gb_key_up);
+                                        do_for_gb_keymap(handle_gb_key_up);
                                 }
                                 break;
                         }
                 }
 
-
-
-                while(gb.cpu.tick <= frame * (70224 / 4))
+                int cur_frame = gb.ppu.frame;
+                while(gb.ppu.frame == cur_frame)
                         step_cpu(&gb.cpu);
+
+                if (save_requested) {
+                        save_state(&gb, external_ram, rom);
+                        save_requested = false;
+                }
 
                 if (windows[TILE_DATA].shown)
                         draw_tile_data(&gb.ppu, windows[TILE_DATA].buf);
