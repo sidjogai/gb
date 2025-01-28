@@ -87,19 +87,36 @@ static void update_coincidence_flag(struct ppu *ppu)
 
 static void check_stat_interrupt(struct ppu *ppu, u8 *interrupt_flag)
 {
-        bool interrupt_requested = 
-                !ppu->prev_stat_line_high && 
-                ((ppu->ly == ppu->lyc && ppu->stat & (1 << 6)) || 
-                 (ppu->mode == 2 && ppu->stat & (1 << 5)) ||
-                 (ppu->mode == 1 && ppu->stat & (1 << 4)) ||
-                 (ppu->mode == 0 && ppu->stat & (1 << 3)));
+        bool stat_line = false;
+        int statbit=0;
+        if (ppu->ly == ppu->lyc && (ppu->stat & (1 << 6))) {
+                statbit = 6;
+                /* assert(ppu->ly != ppu->prev_stat_ly); */
+                /* printf("fired interrupt for bit %d of stat %d\n", 6, *TICK); */
+                stat_line = true;
+        } else if (ppu->mode == 2 && (ppu->stat & (1 << 5))) {
+                statbit = 5;
+                /* printf("fired interrupt for bit %d of stat %d\n", 5, *TICK); */
+                stat_line = true;
+        } else if (ppu->mode == 1 && (ppu->stat & (1 << 4))) {
+                statbit = 4;
+                /* printf("fired interrupt for bit %d of stat %d\n", 4, *TICK); */
+                stat_line = true;
+        } else if (ppu->mode == 0 && (ppu->stat & (1 << 3))) {
+                statbit = 1;
+                /* printf("fired interrupt for bit %d of stat %d\n", 4, *TICK); */
+                stat_line = true;
+        }
 
-        ppu->prev_stat_line_high = interrupt_requested;
         /* printf("Requested stat interrupt\n"); */
-        if (interrupt_requested) {
-                printf("stat interrupt requested on %llu\n", *TICK);
+        if (stat_line && !ppu->prev_stat_line) {
+                /* printf("Fired it as prev stat line is %d (t=%lld, statbit = %d, ly is %d)\n",  */
+                       /* ppu->prev_stat_line, *TICK, statbit, ppu->ly); */
                 *interrupt_flag |= (1 << 1);
         }
+        ppu->prev_stat_line = stat_line;
+        ppu->prev_stat_ly = ppu->ly;
+        /* printf("And now pre_stat_line is %d\n", ppu->prev_stat_line); */
 }
 
 static void switch_to_mode(struct ppu *ppu, enum ppu_mode m, u8 *interrupt_flag)
@@ -163,7 +180,7 @@ static void oam_scan(struct ppu *ppu, u8 *interrupt_flag)
 
         u8 sprite_height = (ppu->lcdc & (1 << 2)) ? 16 : 8;
         if (sprite_height == 16)
-                Q;
+                ; /* TODO */
 
         for (u8 *p = ppu->oam; p < ppu->oam + 160; p += 4) {
                 u8 y = *p - 16;
@@ -598,7 +615,7 @@ static void write_ppu_reg(struct ppu *ppu, u8 v, u16 addr)
                 ppu->ly = v;
                 break;
         case LYC_ADDR:
-                printf("LYC = %d on tick %llu\n", v, *TICK);
+                /* printf("LYC = %d on tick %llu\n", v, *TICK); */
                 ppu->lyc = v;
                 update_coincidence_flag(ppu);
                 break;

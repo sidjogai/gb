@@ -168,7 +168,6 @@ int main(int argc, char *argv[])
         init_gb(&gb, gb_buf, palette, external_ram, rom_buf);
         TICK = &gb.cpu.tick;
 
-
         skip_bootrom(&gb);
 
         load_rom(&gb, rom);

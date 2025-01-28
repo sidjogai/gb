@@ -20,6 +20,7 @@ enum keymap {
 };
 
 static u32 palettes[][4] = {
+        {0xFFE0F8D0, 0xFF88C070, 0xFF346856, 0xFF081820}, /* green (light) */
         {0xFF9BBC0F, 0xFF8BAC0F, 0xFF306230, 0xFF0F380F}, /* green */
         {0xFFFFFFFF, 0xFFB6B6B6, 0xFF676767, 0xFF000000}, /* gray */
 };

@@ -185,7 +185,8 @@ struct ppu {
         /* pixel count only incremented if shift count has reached SCX & 7 */
         bool pixel_counter_enabled;
 
-        bool prev_stat_line_high;
+        bool prev_stat_line;
+        u8 prev_stat_ly; /* TODO: get rid of this */
 
         struct fetcher {
                 u8 tile_id;
