@@ -120,7 +120,7 @@ static struct window windows[] = {
         },
 };
 
-static void handle_keypress(int keypress)
+static void handle_keypress(int keypress, bool is_key_down)
 {
         switch(keypress) {
         case TOGGLE_WINDOW_MAP_WINDOW:
@@ -140,29 +140,29 @@ static void handle_keypress(int keypress)
                 break;
 
         case KEY_A:
-                gb.joypad.state[A] = true;
+                gb.joypad.state[A] = is_key_down;
                 break;
         case KEY_B:
-                gb.joypad.state[B] = true;
+                gb.joypad.state[B] = is_key_down;
                 break;
         case KEY_SELECT:
-                gb.joypad.state[SELECT] = true;
+                gb.joypad.state[SELECT] = is_key_down;
                 break;
         case KEY_START:
-                gb.joypad.state[START] = true;
+                gb.joypad.state[START] = is_key_down;
                 break;
 
         case KEY_RIGHT:
-                gb.joypad.state[RIGHT] = true;
+                gb.joypad.state[RIGHT] = is_key_down;
                 break;
         case KEY_LEFT:
-                gb.joypad.state[LEFT] = true;
+                gb.joypad.state[LEFT] = is_key_down;
                 break;
         case KEY_UP:
-                gb.joypad.state[UP] = true;
+                gb.joypad.state[UP] = is_key_down;
                 break;
         case KEY_DOWN:
-                gb.joypad.state[DOWN] = true;
+                gb.joypad.state[DOWN] = is_key_down;
                 break;
 
         case INCREASE_SCALE:
@@ -235,21 +235,31 @@ int main(int argc, char *argv[])
         for (SDL_Event event; ; frame++) {
                 start = clock_ns();
 
-                memset(gb.joypad.state, 0, sizeof gb.joypad.state);
+                /* memset(gb.joypad.state, 0, sizeof gb.joypad.state); */
 
+                int sym;
+                bool was_key_down_this_frame = false;
                 if (SDL_PollEvent(&event)) {
                         switch (event.type) {
-                        case SDL_KEYDOWN:;
-                                int sym = event.key.keysym.sym;
+                        case SDL_KEYDOWN:
+                                was_key_down_this_frame = true;
+                                sym = event.key.keysym.sym;
                                 switch (sym) {
                                 case QUIT:
                                         goto done;
                                 case RESET:
                                         goto start;
                                 default:
-                                        handle_keypress(sym);
+                                        handle_keypress(sym, 1);
                                         break;
                                 }
+                                break;
+                        case SDL_KEYUP:
+                                if (!was_key_down_this_frame) {
+                                        sym = event.key.keysym.sym;
+                                        handle_keypress(sym, 0);
+                                }
+                                break;
                         }
                 }
 
@@ -264,10 +274,7 @@ int main(int argc, char *argv[])
                         draw_tile_data(&gb.ppu, windows[TILE_DATA].buf);
 
                 if (windows[BG_MAP].shown)
-                        draw_tilemap_0x9800(&gb.ppu, windows[BG_MAP].buf);
-
-                if (windows[WINDOW_MAP].shown)
-                        draw_tilemap_0x9C00(&gb.ppu, windows[WINDOW_MAP].buf);
+                        draw_bg_map(&gb.ppu, windows[BG_MAP].buf);
 
                 if (windows[SPRITES].shown)
                         draw_sprites(&gb.ppu, windows[SPRITES].buf, palette);
