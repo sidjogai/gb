@@ -215,7 +215,7 @@ static void new_vblank(struct ppu *ppu, u8 *interrupt_flag)
 
 static void new_oam_scan(struct ppu *ppu)
 {
-        /* TODO: Different behaviour after LCD re-enabled */
+        /* TODO: different behaviour after LCD re-enabled */
         assert(ppu->dots_since_scanline_started < 80);
         assert(ppu->obj_buf_len == 0);
 
@@ -225,6 +225,7 @@ static void new_oam_scan(struct ppu *ppu)
 
         u8 obj_height = (ppu->lcdc & OBJ_SIZE) ? 16 : 8;
 
+        /* obj priority: lowest x first, and then oam index */
         for (u8 *p = ppu->oam; p < ppu->oam + 160; p += 4) {
                 u8 obj_y = *p - 16;
                 if (ppu->ly >= obj_y && ppu->ly < obj_y + obj_height) {
@@ -234,15 +235,21 @@ static void new_oam_scan(struct ppu *ppu)
                                 .tile_index = p[2],
                                 .attributes = p[3],
                         };
-                        ppu->obj_buf[ppu->obj_buf_len] = obj;
 
+                        ppu->obj_buf[ppu->obj_buf_len] = obj;
                         log_event(TEMP, "oam scan y = %d, x = %d, ind = %x",
                                   obj.y, obj.x, obj.tile_index);
-
                         if (++ppu->obj_buf_len == 10)
                                 break;
                 }
         }
+        for (int i = 1; i < ppu->obj_buf_len; i++)
+                for (int j = i; j > 0; j--)
+                        if (ppu->obj_buf[j].x < ppu->obj_buf[j - 1].x) {
+                                struct obj temp     = ppu->obj_buf[j - 1];
+                                ppu->obj_buf[j - 1] = ppu->obj_buf[j];
+                                ppu->obj_buf[j]     = temp;
+                        }
 
         /* set up for mode 3 */
         set_vram_access(ppu, false);
@@ -537,35 +544,16 @@ static void fetch_obj_bitplane1(struct ppu *ppu)
         log_event(FIFO, "obj push");
 }
 
-static int check_obj(struct ppu *ppu)
-{
-        /* TODO: do we need to sort entries here? */
-
-        int obj_index = -1;
-        for (int i = 0; i < ppu->obj_buf_len; i++) {
-                int x = ppu->obj_buf[i].x;
-                /* TODO: use ppu->pixel_count instead? */
-                if (x >= ppu->lx && x <= ppu->lx + 8)
-                        obj_index = i;
-        }
-        return obj_index;
-}
-
 static void new_drawing(struct ppu *ppu)
 {
-        for (int i = 0; i < ppu->obj_buf_len; i++) {
-                int x = ppu->obj_buf[i].x;
-                if (x >= ppu->lx && x <= ppu->lx + 8) {
-                        log_event(TEMP, "found obj with x = %d, id = %d "
-                                  "(lx was %d), seen is %d and obj_encountered is %d ",
-                                  x,
-                                  ppu->obj_buf[i].tile_index,
-                                  ppu->lx, ppu->obj_buf[i].seen,
-                                  ppu->obj_encountered);
-                }
-        }
+        int obj_index = -1;
+        if (ppu->lcdc & BG_WIN_ENABLE)
+                for (int i = 0; i < ppu->obj_buf_len; i++)
+                        if (ppu->obj_buf[i].x == ppu->pixel_count) {
+                                obj_index = i;
+                                break;
+                        }
 
-        int obj_index = check_obj(ppu);
         if (obj_index != -1 &&
             !ppu->obj_encountered &&
             !ppu->obj_buf[obj_index].seen) {
