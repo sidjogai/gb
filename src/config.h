@@ -17,6 +17,9 @@ enum keymap {
         TOGGLE_TILE_DATA_WINDOW  = 't',
         TOGGLE_WINDOW_MAP_WINDOW = 'w',
         TOGGLE_SPRITES_WINDOW    = 's',
+
+        DECREASE_SCALE           = '[',
+        INCREASE_SCALE           = ']',
 };
 
 static u32 palettes[][4] = {

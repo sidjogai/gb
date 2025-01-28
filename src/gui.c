@@ -63,15 +63,23 @@ static void toggle_window_shown(struct window *w)
 {
         u32 flags = SDL_GetWindowFlags(w->window);
 
-        if (!flags) {
+        if (!flags)
                 init_window(w);
-                return;
-        }
-
-        if (flags & SDL_WINDOW_SHOWN)
+        else if (flags & SDL_WINDOW_SHOWN)
                 SDL_HideWindow(w->window);
         else
                 SDL_ShowWindow(w->window);
+}
+
+static void rescale_window(struct window *w, int scale)
+{
+        SDL_SetWindowSize(w->window, w->width * scale, w->height * scale);
+        w->scale = scale;
+}
+
+static bool window_focused(struct window *w)
+{
+        return SDL_GetWindowFlags(w->window) & SDL_WINDOW_INPUT_FOCUS;
 }
 
 static u64 clock_ns(void)
