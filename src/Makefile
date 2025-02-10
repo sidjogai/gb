@@ -1,6 +1,6 @@
 CC     = cc
 SRC    = main.c
-CFLAGS = -O3
+CFLAGS = -O3 -Wall
 SDL    = $$(sdl2-config --cflags --libs)
 OUT    = gb
 TAGS   = uctags -e --kinds-c=DLdefghlmstuvzp

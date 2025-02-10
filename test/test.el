@@ -15,24 +15,23 @@
    "https://gekkio.fi/files/mooneye-test-suite/mts-20240127-1204-74ae166/mts-20240127-1204-74ae166.tar.gz"
    "mooneye"))
 
-(setq 
- gb-mooneye-test-roms
- (let* ((mooneye/acceptance
-	 (mapcar
-	  (lambda (f) (file-relative-name f gb-test-dir))
-	  (directory-files-recursively
-	   (file-name-concat gb-test-dir "mooneye" "acceptance") ".gb$")))
-	(non-dmg-tests
-	 '("mooneye/acceptance/boot_div2-S.gb"
-	   "mooneye/acceptance/boot_div-dmg0.gb"
-	   "mooneye/acceptance/boot_div-S.gb"
-	   "mooneye/acceptance/boot_hwio-dmg0.gb"
-	   "mooneye/acceptance/boot_hwio-S.gb"
-	   "mooneye/acceptance/boot_regs-dmg0.gb"
-	   "mooneye/acceptance/boot_regs-mgb.gb"
-	   "mooneye/acceptance/boot_regs-sgb2.gb"
-	   "mooneye/acceptance/boot_regs-sgb.gb")))
-   (sort (seq-difference mooneye/acceptance non-dmg-tests) 'string<)))
+(defun gb-get-mooneye-test-roms ()
+  (let* ((mooneye/acceptance
+	  (mapcar
+	   (lambda (f) (file-relative-name f gb-test-dir))
+	   (directory-files-recursively
+	    (file-name-concat gb-test-dir "mooneye" "acceptance") ".gb$")))
+	 (non-dmg-tests
+	  '("mooneye/acceptance/boot_div2-S.gb"
+	    "mooneye/acceptance/boot_div-dmg0.gb"
+	    "mooneye/acceptance/boot_div-S.gb"
+	    "mooneye/acceptance/boot_hwio-dmg0.gb"
+	    "mooneye/acceptance/boot_hwio-S.gb"
+	    "mooneye/acceptance/boot_regs-dmg0.gb"
+	    "mooneye/acceptance/boot_regs-mgb.gb"
+	    "mooneye/acceptance/boot_regs-sgb2.gb"
+	    "mooneye/acceptance/boot_regs-sgb.gb")))
+    (sort (seq-difference mooneye/acceptance non-dmg-tests) 'string<)))
 
 (defun gb-run-cmd (cmd &rest args)
   (let ((default-directory gb-test-dir))
@@ -85,14 +84,15 @@
     (kill-buffer "*test results*"))
   (with-current-buffer (get-buffer-create "*test results*")
     (use-local-map (gb-test-results-map))
-    (let ((total-tests (length gb-mooneye-test-roms))
-	  (tests-passed
-	   (cl-loop for rom-path in gb-mooneye-test-roms
-		    count
-		    (let* ((return-code (gb-run-cmd "./gb-test %s --mooneye" rom-path))
-			   (status (gb-return-code-to-string return-code)))
-		      (insert (format "%-60s %s\n" rom-path status))
-		      (string= status "PASS")))))
+    (let* ((test-roms (gb-get-mooneye-test-roms))
+	   (total-tests (length test-roms))
+	   (tests-passed
+	    (cl-loop for rom-path in test-roms
+		     count
+		     (let* ((return-code (gb-run-cmd "./gb-test %s --mooneye" rom-path))
+			    (status (gb-return-code-to-string return-code)))
+		       (insert (format "%-60s %s\n" rom-path status))
+		       (string= status "PASS")))))
       (whitespace-cleanup)
       (highlight-phrase "FAIL\\|CRASH" 'gb-failed-test)
       (highlight-phrase "PASS" 'gb-passed-test)

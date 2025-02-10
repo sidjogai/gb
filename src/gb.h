@@ -224,8 +224,6 @@ struct ppu {
         bool save_file_requested;
 };
 
-static void sync_ppu(struct ppu *, u8 *interrupt_flag);
-
 static void write_vram(struct ppu *, u8, u16);
 static u8   read_vram(struct ppu *, u16);
 
@@ -282,7 +280,5 @@ static void load_rom(struct gameboy *gb, const char *filename);
 
 /* ================================ debug.c ================================= */
 
-static void draw_tilemap_0x9C00(struct ppu *ppu, u32 buf[]);
-static void draw_tilemap_0x9800(struct ppu *ppu, u32 buf[]);
 static void draw_tile_data(struct ppu *, u32 buf[]);
 static void draw_info(int fps, u32 *buf, int w, int h, u32 *palette, struct gameboy *gb);

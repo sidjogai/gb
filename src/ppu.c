@@ -130,8 +130,6 @@ static void tick_ppu(struct ppu *ppu, u8 *interrupt_flag)
                 break;
         }
 
-        /* printf("mode is %d dss is %d\n", ppu->mode, ppu->dots_since_scanline_started); */
-
         update_coincidence_flag(ppu);
 
         check_stat(ppu, interrupt_flag);
@@ -261,9 +259,6 @@ static u16 vram_offset_to_addr(u16 offset)
 {
         return 0x8000 + offset;
 }
-
-static void vblank(struct ppu *ppu, u8 *interrupt_flag);
-static void drawing(struct ppu *ppu, u8 *interrupt_flag);
 
 static void oam_dma(struct ppu *ppu);
 

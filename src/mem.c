@@ -18,10 +18,8 @@ static void write_mem(struct mem *mem, u8 v, u16 addr)
         else if (addr <= 0xDFFF)
                 mem->wram[addr - 0xC000] = v;
         else if (addr <= 0xFDFF) {
-                /* die("%x, %x\n", 0xC000 + (addr & 0x1FFF), addr- 0xE000); */
                 /* /\* mem->wram[0xC000 + (addr & 0x1FFF)] = v; *\/ */
                 mem->wram[addr - 0xE000] = v;
-                /* die("here %x %x!\n", addr, 0xC000 + (addr & 0x1FFF)); */
         } else if (addr <= 0xFE9F)
                 write_oam(mem->ppu, v, addr);
         else if (addr <= 0xFEFF)
@@ -29,8 +27,6 @@ static void write_mem(struct mem *mem, u8 v, u16 addr)
         else if (addr == 0xFF00)
                 write_p1(mem->joypad, v);
         else if (addr == 0xFF01) {
-                /* if (globals.show_serial_output) */
-                /*         putc(v, stdout); */
         }
         else if (addr == 0xFF02)
                 ;
@@ -80,8 +76,6 @@ static u8 read_mem(struct mem *mem, u16 addr)
         else if (addr <= 0xFDFF)
                 v = mem->wram[addr - 0xE000];
                 /* v = mem->wram[0xC000 + (addr & 0x1FFF)]; */
-        /* die("here !\n"); */
-        /* ; // TODO implement echo RAM */
         else if (addr <= 0xFE9F)
                 v = read_oam(mem->ppu, addr);
         else if (addr <= 0xFEFF)

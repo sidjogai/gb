@@ -29,7 +29,6 @@ typedef int      m_cycle;
 typedef int      t_cycle;
 typedef int      dot;
 
-static u64 *TICK;
 static u64 *FRAME;
 
 #define SUCCESS_CODE 11
@@ -136,7 +135,6 @@ int main(int argc, char *argv[])
         char *rom = argv[1];
 
         init_gb(&gb, gb_buf, palette, external_ram, rom_buf);
-        TICK = &gb.cpu.tick;
 
         skip_bootrom(&gb);
 

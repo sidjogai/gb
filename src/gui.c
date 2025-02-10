@@ -95,6 +95,8 @@ static bool window_focused(struct window *w)
         return SDL_GetWindowFlags(w->window) & SDL_WINDOW_INPUT_FOCUS;
 }
 
+/* TODO: don't use sleep to ensure framerate as it's unpredictable */
+
 static u64 clock_ns(void)
 {
     struct timespec ts;

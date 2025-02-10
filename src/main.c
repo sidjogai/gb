@@ -27,11 +27,11 @@ typedef uint64_t u64;
 
 #define assert(expr) SDL_assert(expr)
 
-#define die(...)                                                            \
-        do {                                                                \
-                SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__); \
-                exit(EXIT_FAILURE);                                         \
-        } while (0)
+#define die(...)							\
+	do {								\
+		SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, __VA_ARGS__); \
+		exit(EXIT_FAILURE);					\
+	} while (0)
 
 #include "config.h"
 #include "gb.h"
@@ -54,7 +54,7 @@ static u32 sprites_buf[(8 * 10) * (8 * 4)];
 static u32 tile_data_buf[(8 * 16 + 15) * (8 * 24 + 23)];
 static u32 info_buf[(8 * 20) *  (8 * 8)];
 
-static u8 rom_buf[8 * 1024 * 1024]; /* size of largest gameboy ROM */
+static u8 rom_buf[8 * 1024 * 1024]; /* size of largest ROM */
 static u8 external_ram[128 * 1024]; /* max external RAM */
 
 static struct gameboy gb;
@@ -62,317 +62,326 @@ static struct gameboy gb;
 enum window_id { GB, BG_MAP, WINDOW_MAP, INFO, TILE_DATA, SPRITES };
 
 static struct window windows[] = {
-        [GB] = {
-                .title  = "gb",
-                .width  = 160,
-                .height = 144,
-                .scale  = 2,
-                .buf    = gb_buf,
-                .shown = true,
-        },
-        [BG_MAP] = {
-                .title  = "gb — background map",
-                .width  = 256,
-                .height = 256,
-                .scale  = 1,
-                .buf    = bg_map_buf,
-        },
-        [WINDOW_MAP] = {
-                .title  = "gb — window map",
-                .width  = 256,
-                .height = 256,
-                .scale  = 1,
-                .buf    = window_map_buf,
-        },
-        [INFO] = {
-                .title  = "gb — info",
-                .width  = 8 * 20,
-                .height = 8 * 8,
-                .scale  = 2,
-                .buf    = info_buf,
-        },
-        [SPRITES] = {
-                .title  = "gb — sprites",
-                .width  = 8 * 10,
-                .height = 8 * 4,
-                .scale  = 3,
-                .buf    = sprites_buf,
-        },
-        [TILE_DATA] = {
-                .title  = "gb — tile data",
-                .width  = 16 * 8 + 15,
-                .height = 24 * 8 + 23,
-                .scale  = 2,
-                .buf    = tile_data_buf,
-        },
+	[GB] = {
+		.title  = "gb",
+		.width  = 160,
+		.height = 144,
+		.scale  = 2,
+		.buf    = gb_buf,
+		.shown  = true,
+	},
+	[BG_MAP] = {
+		.title  = "gb — background map",
+		.width  = 256,
+		.height = 256,
+		.scale  = 1,
+		.buf    = bg_map_buf,
+	},
+	[WINDOW_MAP] = {
+		.title  = "gb — window map",
+		.width  = 256,
+		.height = 256,
+		.scale  = 1,
+		.buf    = window_map_buf,
+	},
+	[INFO] = {
+		.title  = "gb — info",
+		.width  = 8 * 20,
+		.height = 8 * 8,
+		.scale  = 2,
+		.buf    = info_buf,
+	},
+	[SPRITES] = {
+		.title  = "gb — sprites",
+		.width  = 8 * 10,
+		.height = 8 * 4,
+		.scale  = 3,
+		.buf    = sprites_buf,
+	},
+	[TILE_DATA] = {
+		.title  = "gb — tile data",
+		.width  = 16 * 8 + 15,
+		.height = 24 * 8 + 23,
+		.scale  = 2,
+		.buf    = tile_data_buf,
+	},
 };
-
-#define do_for_gb_keymap(code)                                  \
-        code(KEY_A,      gb.joypad.state[A] = key_down)         \
-        code(KEY_B,      gb.joypad.state[B] = key_down)         \
-        code(KEY_START,  gb.joypad.state[START] = key_down)     \
-        code(KEY_SELECT, gb.joypad.state[SELECT] = key_down)    \
-        code(KEY_LEFT,   gb.joypad.state[LEFT] = key_down)      \
-        code(KEY_RIGHT,  gb.joypad.state[RIGHT] = key_down)     \
-        code(KEY_DOWN,   gb.joypad.state[DOWN] = key_down)      \
-        code(KEY_UP,     gb.joypad.state[UP] = key_down)
-
-#define do_for_misc_keymap(code)                                         \
-        code(QUIT, goto quit)                                            \
-        code(RESET, goto reset)                                          \
-             code(LOAD, load_state(&gb, external_ram, rom);)             \
-        code(SAVE, save_requested = true;)                               \
-        code(TARGET_UNCAPPED_SPEED, limit_fps = false;)                  \
-        code(TARGET_1X_SPEED,                                            \
-             target_fps = 60;                                            \
-             target_duration = 1000000000 / target_fps;)                 \
-        code(TARGET_2X_SPEED, target_fps = 120;                          \
-             target_duration = 1000000000 / target_fps;)                 \
-        code(TARGET_3X_SPEED,                                            \
-             target_fps = 180;                                           \
-             target_duration = 1000000000 / target_fps;)                 \
-        code(TARGET_4X_SPEED,                                            \
-             target_fps = 240;                                           \
-             target_duration = 1000000000 / target_fps;)                 \
-        code(TARGET_5X_SPEED,                                            \
-             target_fps = 300;                                           \
-             target_duration = 1000000000 / target_fps;)                 \
-        code(TOGGLE_WINDOW_MAP_WINDOW,                                   \
-             toggle_window_shown(&windows[WINDOW_MAP]))                  \
-        code(TOGGLE_SPRITES_WINDOW,                                      \
-             toggle_window_shown(&windows[SPRITES]))                     \
-        code(TOGGLE_BG_MAP_WINDOW,                                       \
-             toggle_window_shown(&windows[BG_MAP]))                      \
-        code(TOGGLE_TILE_DATA_WINDOW,                                    \
-             toggle_window_shown(&windows[TILE_DATA]))                   \
-        code(INCREASE_SCALE,                                             \
-             for (int i = 0; i < len(windows); i++) {                    \
-                     if (window_focused(&windows[i])) {                  \
-                             int s = windows[i].scale;                   \
-                             if (s < 9)                                  \
-                                     s++;                                \
-                             rescale_window(&windows[i], s);             \
-                     }                                                   \
-             })                                                          \
-        code(DECREASE_SCALE,                                             \
-             for (int i = 0; i < len(windows); i++) {                    \
-                     if (window_focused(&windows[i])) {                  \
-                             int s = windows[i].scale;                   \
-                             if (s > 0)                                  \
-                                     s--;                                \
-                             rescale_window(&windows[i], s);             \
-                     }                                                   \
-             })                                                          \
-        code(CYCLE_PALETTE,                                              \
-             if (palette - palettes < len(palettes) - 4)                 \
-                     palette += 4;                                       \
-             else                                                        \
-                     palette = palettes;                                 \
-             memcpy(gb.ppu.palette, palette, sizeof gb.ppu.palette));
-
-#define handle_gb_key_down(key, action) case key: action; break;
-#define handle_gb_key_up(key, action) case key: action; break;
-
-/* enforce a delay to avoid toggling a window, saving the state, etc. many times
-   per second as keypresses register over multiple frames */
-static int last_misc_keypress;
-#define handle_misc_key_down(key, action) case key:             \
-        if (gb.ppu.frame + 5 > last_misc_keypress) {            \
-                last_misc_keypress = gb.ppu.frame; action;      \
-        }                                                       \
-        break;                                                  \
 
 int main(int argc, char *argv[])
 {
-        char *bootrom        = NULL;
-        char *rom            = NULL;
-        bool  limit_fps      = true;
-        u32  *palette        = palettes;
-        int   target_fps     = 60;
-        bool  save_requested = false;
+	char *bootrom        = NULL;
+	char *rom            = NULL;
+	bool  limit_fps      = true;
+	u32  *palette        = palettes;
+	int   target_fps     = 60;
+	bool  save_requested = false;
 
-        SDL_GameController *controller = NULL;
+	SDL_GameController *controller = NULL;
 
-        (void)bootrom;
+	(void)bootrom;
 
-        for (int opt; (opt = getopt(argc, argv, "b:p:s:dF")) != -1; )
-                switch (opt)  {
-                case 'b':
-                        bootrom = optarg;
-                        break;
-                case 'd':
-                        for (int i = 0; i < len(windows); i++)
-                                windows[i].shown = true;
-                        break;
-                case 'p':
-                        if (optarg[0] >= '1' && optarg[0] <= '9')
-                                if (optarg[0] - '0' <= len(palettes))
-                                        palette += (optarg[0] - '1') * 4;
-                        break;
-                case 'F':
-                        limit_fps = false;
-                        break;
-                }
+	/* TODO: don't use getopt() */
+	for (int opt; (opt = getopt(argc, argv, "b:p:s:dF")) != -1; )
+		switch (opt)  {
+		case 'b':
+			bootrom = optarg;
+			break;
+		case 'd':
+			for (int i = 0; i < len(windows); i++)
+				windows[i].shown = true;
+			break;
+		case 'p':
+			if (optarg[0] >= '1' && optarg[0] <= '9')
+				if (optarg[0] - '0' <= len(palettes))
+					palette += (optarg[0] - '1') * 4;
+			break;
+		case 'F':
+			limit_fps = false;
+			break;
+		}
 
-        if (optind > argc)
-                die("no rom supplied");
-        rom = argv[optind];
+	if (optind > argc)
+		die("no rom supplied");
+	rom = argv[optind];
 
-        if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) < 0)
-                sdl_fail();
+	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) < 0)
+		sdl_fail();
 
-        /* TODO: support multiple joysticks */
-        if (SDL_NumJoysticks() == 1 && SDL_IsGameController(0))
-                if ((controller = SDL_GameControllerOpen(0)) == NULL)
-                        sdl_fail();
+	/* TODO: support multiple joysticks? */
+	if (SDL_NumJoysticks() == 1 && SDL_IsGameController(0))
+		if ((controller = SDL_GameControllerOpen(0)) == NULL)
+			sdl_fail();
 
-        for (int i = 0; i < len(windows); i++)
-                if (windows[i].shown)
-                        init_window(&windows[i]);
+	for (int i = 0; i < len(windows); i++)
+		if (windows[i].shown)
+			init_window(&windows[i]);
 
-        u64 elapsed;
+	u64 elapsed;
 
- reset:
-        init_gb(&gb, gb_buf, palette, external_ram, rom_buf);
+	init_gb(&gb, gb_buf, palette, external_ram, rom_buf);
 
-        skip_bootrom(&gb);
+	skip_bootrom(&gb);
 
-        load_rom(&gb, rom);
+	load_rom(&gb, rom);
 
-        u64 target_duration = 1000000000 / target_fps;
+	u64 target_duration = 1000000000 / target_fps;
 
-        for (;;) {
-                u64 start = clock_ns();
+	for (;;) {
+		u64 start = clock_ns();
 
-                bool key_down;
-                SDL_Event event;
-                if (SDL_PollEvent(&event)) {
-                        switch (event.type) {
-                        case SDL_KEYDOWN:
-                                key_down = true;
-                                switch (event.key.keysym.sym) {
-                                        do_for_gb_keymap(handle_gb_key_down);
-                                        do_for_misc_keymap(handle_misc_key_down);
-                                }
-                                break;
-                        case SDL_KEYUP:
-                                key_down = false;
-                                switch (event.key.keysym.sym) {
-                                        do_for_gb_keymap(handle_gb_key_up);
-                                }
-                                break;
-                        case SDL_CONTROLLERBUTTONDOWN:
-                                /* on the 8BitDo zero 2, the controllers seem to
-                                   be flipped */
-                                switch (event.cbutton.button) {
-                                case SDL_CONTROLLER_BUTTON_B:
-                                        gb.joypad.state[A] = true;
-                                        break;
-                                case SDL_CONTROLLER_BUTTON_A:
-                                        gb.joypad.state[B] = true;
-                                        break;
-                                case SDL_CONTROLLER_BUTTON_BACK:
-                                        gb.joypad.state[SELECT] = true;
-                                case SDL_CONTROLLER_BUTTON_START:
-                                        gb.joypad.state[START] = true;
-                                case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
-                                        if (gb.ppu.frame + 5 > last_misc_keypress) {
-                                                last_misc_keypress = gb.ppu.frame;
-                                                save_requested = true;
-                                        };
-                                        break;
-                                case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
-                                        if (gb.ppu.frame + 5 > last_misc_keypress) {
-                                                last_misc_keypress = gb.ppu.frame;
-                                                load_state(&gb, external_ram, rom);
-                                        };
-                                        break;
-                                }
-                                break;
-                        case SDL_CONTROLLERBUTTONUP:
-                                switch (event.cbutton.button) {
-                                case SDL_CONTROLLER_BUTTON_B:
-                                        gb.joypad.state[A] = false;
-                                        break;
-                                case SDL_CONTROLLER_BUTTON_A:
-                                        gb.joypad.state[B] = false;
-                                        break;
-                                case SDL_CONTROLLER_BUTTON_BACK:
-                                        gb.joypad.state[SELECT] = false;
-                                case SDL_CONTROLLER_BUTTON_START:
-                                        gb.joypad.state[START] = false;
-                                }
-                                break;
-                        case SDL_CONTROLLERAXISMOTION:
-                                switch (event.caxis.axis) {
-                                case SDL_CONTROLLER_AXIS_LEFTX:
-                                        if (event.caxis.value == -32768)
-                                                gb.joypad.state[LEFT] = true;
-                                        else if (event.caxis.value == 32767)
-                                                gb.joypad.state[RIGHT] = true;
-                                        else {
-                                                gb.joypad.state[LEFT] = 0;
-                                                gb.joypad.state[RIGHT] = 0;
-                                        }
-                                        break;
-                                case SDL_CONTROLLER_AXIS_LEFTY:
-                                        if (event.caxis.value == -32768)
-                                                gb.joypad.state[UP] = true;
-                                        else if (event.caxis.value == 32767)
-                                                gb.joypad.state[DOWN] = true;
-                                        else {
-                                                gb.joypad.state[UP] = 0;
-                                                gb.joypad.state[DOWN] = 0;
-                                        }
-                                        break;
-                                }
+		SDL_Event event;
+		if (SDL_PollEvent(&event)) {
+			switch (event.type) {
+			case SDL_WINDOWEVENT:
+				switch (event.window.event) {
+				case SDL_WINDOWEVENT_CLOSE:
+					goto quit;
+					break;
+				}
+				break;
+			case SDL_KEYDOWN:
+				switch (event.key.keysym.sym) {
+				case KEY_A:
+					gb.joypad.state[A] = true;
+					break;
+				case KEY_B:
+					gb.joypad.state[B] = true;
+					break;
+				case KEY_START:
+					gb.joypad.state[START] = true;
+					break;
+				case KEY_SELECT:
+					gb.joypad.state[SELECT] = true;
+					break;
+				case KEY_LEFT:
+					gb.joypad.state[LEFT] = true;
+					break;
+				case KEY_RIGHT:
+					gb.joypad.state[RIGHT] = true;
+					break;
+				case KEY_DOWN:
+					gb.joypad.state[DOWN] = true;
+					break;
+				case KEY_UP:
+					gb.joypad.state[UP] = true;
+					break;
+				case QUIT:
+					goto quit;
+				case TOGGLE_WINDOW_MAP_WINDOW:
+					toggle_window_shown(&windows[WINDOW_MAP]);
+					break;
+				case TOGGLE_SPRITES_WINDOW:
+					toggle_window_shown(&windows[SPRITES]);
+					break;
+				case TOGGLE_BG_MAP_WINDOW:
+					toggle_window_shown(&windows[BG_MAP]);
+					break;
+				case TOGGLE_TILE_DATA_WINDOW:
+					toggle_window_shown(&windows[TILE_DATA]);
+					break;
+				case INCREASE_SCALE:
+					for (int i = 0; i < len(windows); i++) {
+						if (window_focused(&windows[i])) {
+							int s = windows[i].scale;
+							if (s < 9)
+								s++;
+							rescale_window(&windows[i], s);
+						}
+					}
+					break;
+				case DECREASE_SCALE:
+					for (int i = 0; i < len(windows); i++) {
+						if (window_focused(&windows[i])) {
+							int s = windows[i].scale;
+							if (s > 0)
+								s--;
+							rescale_window(&windows[i], s);
+						}
+					}
+					break;
+				case CYCLE_PALETTE:
+					if (palette - palettes < len(palettes) - 4)
+						palette += 4;
+					else
+						palette = palettes;
+					memcpy(gb.ppu.palette, palette, sizeof gb.ppu.palette);
+					break;
+				}
+				break;
+			case SDL_KEYUP:
+				switch (event.key.keysym.sym) {
+				case KEY_A:
+					gb.joypad.state[A] = false;
+					break;
+				case KEY_B:
+					gb.joypad.state[B] = false;
+					break;
+				case KEY_START:
+					gb.joypad.state[START] = false;
+					break;
+				case KEY_SELECT:
+					gb.joypad.state[SELECT] = false;
+					break;
+				case KEY_LEFT:
+					gb.joypad.state[LEFT] = false;
+					break;
+				case KEY_RIGHT:
+					gb.joypad.state[RIGHT] = false;
+					break;
+				case KEY_DOWN:
+					gb.joypad.state[DOWN] = false;
+					break;
+				case KEY_UP:
+					gb.joypad.state[UP] = false;
+					break;
+				}
+				break;
+			case SDL_CONTROLLERBUTTONDOWN:
+				/* on the 8BitDo zero 2, the controls seem to
+				   be flipped */
+				switch (event.cbutton.button) {
+				case SDL_CONTROLLER_BUTTON_B:
+					gb.joypad.state[A] = true;
+					break;
+				case SDL_CONTROLLER_BUTTON_A:
+					gb.joypad.state[B] = true;
+					break;
+				case SDL_CONTROLLER_BUTTON_BACK:
+					gb.joypad.state[SELECT] = true;
+				case SDL_CONTROLLER_BUTTON_START:
+					gb.joypad.state[START] = true;
+				case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
+					save_requested = true;
+					break;
+				case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
+					load_state(&gb, external_ram, rom);
+					break;
+				}
+				break;
+			case SDL_CONTROLLERBUTTONUP:
+				switch (event.cbutton.button) {
+				case SDL_CONTROLLER_BUTTON_B:
+					gb.joypad.state[A] = false;
+					break;
+				case SDL_CONTROLLER_BUTTON_A:
+					gb.joypad.state[B] = false;
+					break;
+				case SDL_CONTROLLER_BUTTON_BACK:
+					gb.joypad.state[SELECT] = false;
+				case SDL_CONTROLLER_BUTTON_START:
+					gb.joypad.state[START] = false;
+				}
+				break;
+			case SDL_CONTROLLERAXISMOTION:
+				switch (event.caxis.axis) {
+				case SDL_CONTROLLER_AXIS_LEFTX:
+					if (event.caxis.value == -32768)
+						gb.joypad.state[LEFT] = true;
+					else if (event.caxis.value == 32767)
+						gb.joypad.state[RIGHT] = true;
+					else {
+						gb.joypad.state[LEFT] = 0;
+						gb.joypad.state[RIGHT] = 0;
+					}
+					break;
+				case SDL_CONTROLLER_AXIS_LEFTY:
+					if (event.caxis.value == -32768)
+						gb.joypad.state[UP] = true;
+					else if (event.caxis.value == 32767)
+						gb.joypad.state[DOWN] = true;
+					else {
+						gb.joypad.state[UP] = 0;
+						gb.joypad.state[DOWN] = 0;
+					}
+					break;
+				}
+				break;
+			}
+		}
 
-                        }
-                }
+		int cur_frame = gb.ppu.frame;
+		while(gb.ppu.frame == cur_frame)
+			step_cpu(&gb.cpu);
 
-                int cur_frame = gb.ppu.frame;
-                while(gb.ppu.frame == cur_frame)
-                        step_cpu(&gb.cpu);
+		if (save_requested) {
+			save_state(&gb, external_ram, rom);
+			save_requested = false;
+		}
 
-                if (save_requested) {
-                        save_state(&gb, external_ram, rom);
-                        save_requested = false;
-                }
+		if (windows[TILE_DATA].shown)
+			draw_tile_data(&gb.ppu, windows[TILE_DATA].buf);
 
-                if (windows[TILE_DATA].shown)
-                        draw_tile_data(&gb.ppu, windows[TILE_DATA].buf);
+		if (windows[BG_MAP].shown)
+			draw_bg_map(&gb.ppu, windows[BG_MAP].buf);
 
-                if (windows[BG_MAP].shown)
-                        draw_bg_map(&gb.ppu, windows[BG_MAP].buf);
+		if (windows[WINDOW_MAP].shown)
+			draw_bg_map(&gb.ppu, windows[BG_MAP].buf);
 
-                if (windows[WINDOW_MAP].shown)
-                        draw_bg_map(&gb.ppu, windows[BG_MAP].buf);
+		if (windows[SPRITES].shown)
+			draw_sprites(&gb.ppu, windows[SPRITES].buf, palette);
 
-                if (windows[SPRITES].shown)
-                        draw_sprites(&gb.ppu, windows[SPRITES].buf, palette);
+		if (windows[INFO].shown && gb.ppu.frame % 10 == 0)
+			draw_info(1,
+				  windows[INFO].buf,
+				  windows[INFO].width,
+				  windows[INFO].height,
+				  palette, &gb);
 
-                if (windows[INFO].shown && gb.ppu.frame % 10 == 0)
-                        draw_info(1,
-                                  windows[INFO].buf,
-                                  windows[INFO].width,
-                                  windows[INFO].height,
-                                  palette, &gb);
+		for (int i = 0; i < len(windows); i++)
+			if (windows[i].shown)
+				render_window(&windows[i]);
 
-                for (int i = 0; i < len(windows); i++)
-                        if (windows[i].shown)
-                                render_window(&windows[i]);
+		if (limit_fps && (elapsed = clock_ns() - start) < target_duration)
+			sleep_ns(target_duration - elapsed);
 
-                if (limit_fps && (elapsed = clock_ns() - start) < target_duration)
-                        sleep_ns(target_duration - elapsed);
-
-                static char buf[20] = {0};
-                u64 end = clock_ns();
-                int fps = 1000000000 / (end - start);
-                assert(end - start);
-                snprintf(buf, 20, "gb - %d fps", fps);
-                SDL_SetWindowTitle(windows[GB].window, buf);
-        }
+		static char buf[20] = {0};
+		u64 end = clock_ns();
+		int fps = 1000000000 / (end - start);
+		assert(end - start);
+		snprintf(buf, 20, "gb - %d fps", fps);
+		SDL_SetWindowTitle(windows[GB].window, buf);
+	}
 
  quit:
-        return 0;
+	return 0;
 }

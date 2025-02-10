@@ -9,8 +9,7 @@ enum keymap {
         KEY_UP                   = SDLK_UP,
         KEY_DOWN                 = SDLK_DOWN,
 
-        QUIT                     = SDLK_ESCAPE,
-        RESET                    = 'r',
+        QUIT                     = 'q',
 
         TARGET_UNCAPPED_SPEED    = '0',
         TARGET_1X_SPEED          = '1',
