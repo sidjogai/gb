@@ -25,8 +25,8 @@ A work-in-progress Game Boy emulator written as a learning exercise.
 
 ## Installation
 
-Ensure that [SDL2](https://wiki.libsdl.org/SDL2/) is installed and run `make`
-from the [src](src) directory.
+Ensure that [SDL3](https://wiki.libsdl.org/SDL3/) and `pkg-config` are
+installed, then run `make` from the [src](src) directory.
 
 ## Usage
 

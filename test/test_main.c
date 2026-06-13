@@ -11,7 +11,8 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "SDL.h"
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
 
 #if SDL_BYTEORDER != SDL_LIL_ENDIAN
 #error "System unsupported"

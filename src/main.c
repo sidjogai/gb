@@ -11,7 +11,8 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "SDL.h"
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
 
 #if SDL_BYTEORDER != SDL_LIL_ENDIAN
 #error "System unsupported"
@@ -116,8 +117,6 @@ int main(int argc, char *argv[])
 	int   target_fps     = 60;
 	bool  save_requested = false;
 
-	SDL_GameController *controller = NULL;
-
 	(void)bootrom;
 
 	/* TODO: don't use getopt() */
@@ -144,13 +143,10 @@ int main(int argc, char *argv[])
 		die("no rom supplied");
 	rom = argv[optind];
 
-	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) < 0)
+	if (!SDL_Init(SDL_INIT_VIDEO))
 		sdl_fail();
 
-	/* TODO: support multiple joysticks? */
-	if (SDL_NumJoysticks() == 1 && SDL_IsGameController(0))
-		if ((controller = SDL_GameControllerOpen(0)) == NULL)
-			sdl_fail();
+	/* TODO(sdl3): joystick support */
 
 	for (int i = 0; i < len(windows); i++)
 		if (windows[i].shown)
@@ -172,15 +168,10 @@ int main(int argc, char *argv[])
 		SDL_Event event;
 		if (SDL_PollEvent(&event)) {
 			switch (event.type) {
-			case SDL_WINDOWEVENT:
-				switch (event.window.event) {
-				case SDL_WINDOWEVENT_CLOSE:
-					goto quit;
-					break;
-				}
-				break;
-			case SDL_KEYDOWN:
-				switch (event.key.keysym.sym) {
+			case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+				goto quit;
+			case SDL_EVENT_KEY_DOWN:
+				switch (event.key.key) {
 				case KEY_A:
 					gb.joypad.state[A] = true;
 					break;
@@ -248,8 +239,8 @@ int main(int argc, char *argv[])
 					break;
 				}
 				break;
-			case SDL_KEYUP:
-				switch (event.key.keysym.sym) {
+			case SDL_EVENT_KEY_UP:
+				switch (event.key.key) {
 				case KEY_A:
 					gb.joypad.state[A] = false;
 					break;
@@ -273,66 +264,6 @@ int main(int argc, char *argv[])
 					break;
 				case KEY_UP:
 					gb.joypad.state[UP] = false;
-					break;
-				}
-				break;
-			case SDL_CONTROLLERBUTTONDOWN:
-				/* on the 8BitDo zero 2, the controls seem to
-				   be flipped */
-				switch (event.cbutton.button) {
-				case SDL_CONTROLLER_BUTTON_B:
-					gb.joypad.state[A] = true;
-					break;
-				case SDL_CONTROLLER_BUTTON_A:
-					gb.joypad.state[B] = true;
-					break;
-				case SDL_CONTROLLER_BUTTON_BACK:
-					gb.joypad.state[SELECT] = true;
-				case SDL_CONTROLLER_BUTTON_START:
-					gb.joypad.state[START] = true;
-				case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
-					save_requested = true;
-					break;
-				case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
-					load_state(&gb, external_ram, rom);
-					break;
-				}
-				break;
-			case SDL_CONTROLLERBUTTONUP:
-				switch (event.cbutton.button) {
-				case SDL_CONTROLLER_BUTTON_B:
-					gb.joypad.state[A] = false;
-					break;
-				case SDL_CONTROLLER_BUTTON_A:
-					gb.joypad.state[B] = false;
-					break;
-				case SDL_CONTROLLER_BUTTON_BACK:
-					gb.joypad.state[SELECT] = false;
-				case SDL_CONTROLLER_BUTTON_START:
-					gb.joypad.state[START] = false;
-				}
-				break;
-			case SDL_CONTROLLERAXISMOTION:
-				switch (event.caxis.axis) {
-				case SDL_CONTROLLER_AXIS_LEFTX:
-					if (event.caxis.value == -32768)
-						gb.joypad.state[LEFT] = true;
-					else if (event.caxis.value == 32767)
-						gb.joypad.state[RIGHT] = true;
-					else {
-						gb.joypad.state[LEFT] = 0;
-						gb.joypad.state[RIGHT] = 0;
-					}
-					break;
-				case SDL_CONTROLLER_AXIS_LEFTY:
-					if (event.caxis.value == -32768)
-						gb.joypad.state[UP] = true;
-					else if (event.caxis.value == 32767)
-						gb.joypad.state[DOWN] = true;
-					else {
-						gb.joypad.state[UP] = 0;
-						gb.joypad.state[DOWN] = 0;
-					}
 					break;
 				}
 				break;

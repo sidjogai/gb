@@ -102,14 +102,22 @@ static int parse_ram_banks(u8 v)
         }
 }
 
+static u64 read_io(SDL_IOStream *stream, void *ptr, size_t size, size_t nitems)
+{
+    if (size > 0 && nitems > 0) {
+        return SDL_ReadIO(stream, ptr, size * nitems) / size;
+    }
+    return 0;
+}
+
 static void load_rom(struct gameboy *gb, const char *path)
 {
-        SDL_RWops *f = SDL_RWFromFile(path, "rb");
+        SDL_IOStream *f = SDL_IOFromFile(path, "rb");
 
         if (f == NULL)
                 die("Error opening ROM '%s'\n", path);
 
-        if (f->read(f, gb->mbc.rom, 32 * 1024, 1) != 1)
+        if (read_io(f, gb->mbc.rom, 32 * 1024, 1) != 1)
                 die("Error reading ROM '%s'\n", path);
 
         gb->mbc.type      = parse_mbc_type(gb->mbc.rom[0x147]);
@@ -118,10 +126,10 @@ static void load_rom(struct gameboy *gb, const char *path)
 
         if (gb->mbc.rom_banks - 2 > 0)  {
                 size_t left = (size_t)((gb->mbc.rom_banks - 2) * 16 * 1024);
-                if (f->read(f, gb->mbc.rom + 32 * 1024, left, 1) == 0)
+                if (read_io(f, gb->mbc.rom + 32 * 1024, left, 1) == 0)
                         die("Error reading! ROM '%s'\n", path);
         }
-        f->close(f);
+        SDL_CloseIO(f);
 }
 
 #define do_for_gb_fields(code)                  \
@@ -184,9 +192,9 @@ static void load_rom(struct gameboy *gb, const char *path)
         code(ppu.mode);                         \
 
 #define write_struct_field(field) \
-        error += !f->write(f, &gb->field, sizeof gb->field, 1);
+        error += !read_io(f, &gb->field, sizeof gb->field, 1);
 #define read_struct_field(field) \
-        error += !f->read(f, &gb->field, sizeof gb->field, 1);
+        error += !read_io(f, &gb->field, sizeof gb->field, 1);
 /* for debugging */
 #define print_struct_field(field) printf(#field " = %d\n", gb->field);
 
@@ -195,7 +203,7 @@ static void save_state(struct gameboy *gb, u8 *external_ram, const char *path)
         char *save_path;
         SDL_asprintf(&save_path, "%s.save", path);
 
-        SDL_RWops *f = SDL_RWFromFile(save_path, "wb");
+        SDL_IOStream *f = SDL_IOFromFile(save_path, "wb");
 
         if (f == NULL) 
                 die("Error opening save file '%s' for writing\n", save_path);
@@ -203,12 +211,12 @@ static void save_state(struct gameboy *gb, u8 *external_ram, const char *path)
         int error = 0;
 
         do_for_gb_fields(write_struct_field);
-        f->write(f, external_ram, sizeof external_ram, 1);
+        read_io(f, external_ram, sizeof external_ram, 1);
 
         if (error)
                 die("Error writing save file '%s'", save_path);
 
-        f->close(f);
+        SDL_CloseIO(f);
 }
 
 static void load_state(struct gameboy *gb, u8 *external_ram, const char *path)
@@ -216,7 +224,7 @@ static void load_state(struct gameboy *gb, u8 *external_ram, const char *path)
         char *save_path;
         SDL_asprintf(&save_path, "%s.save", path);
 
-        SDL_RWops *f = SDL_RWFromFile(save_path, "rb");
+        SDL_IOStream *f = SDL_IOFromFile(save_path, "rb");
         
         if (f == NULL)
                 die("Error opening save file '%s' for reading\n", save_path);
@@ -224,10 +232,10 @@ static void load_state(struct gameboy *gb, u8 *external_ram, const char *path)
         int error = 0;
 
         do_for_gb_fields(read_struct_field);
-        f->read(f, external_ram, sizeof external_ram, 1);
+        read_io(f, external_ram, sizeof external_ram, 1);
 
         if (error)
                 die("Error reading save file '%s'", save_path);
         
-        f->close(f);
+        SDL_CloseIO(f);
 }

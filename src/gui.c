@@ -20,16 +20,13 @@ static noreturn void sdl_fail(void)
 static void init_window(struct window *w)
 {
         w->window = SDL_CreateWindow(w->title,
-                                     SDL_WINDOWPOS_UNDEFINED,
-                                     SDL_WINDOWPOS_UNDEFINED,
                                      w->width * w->scale,
                                      w->height * w->scale,
-                                     /* SDL_WINDOW_ALWAYS_ON_TOP | */
-                                     SDL_WINDOW_ALLOW_HIGHDPI);
+                                     SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_RESIZABLE);
         if (w->window == NULL)
                 sdl_fail();
 
-        w->renderer = SDL_CreateRenderer(w->window, -1, 0);
+        w->renderer = SDL_CreateRenderer(w->window, NULL);
         if (w->renderer == NULL)
                 sdl_fail();
 
@@ -41,6 +38,12 @@ static void init_window(struct window *w)
         if(w->texture == NULL)
                 sdl_fail();
 
+	if (!SDL_SetTextureScaleMode(w->texture, SDL_SCALEMODE_NEAREST))
+		sdl_fail();
+
+	if (!SDL_SetRenderLogicalPresentation(w->renderer, w->width, w->height, SDL_LOGICAL_PRESENTATION_LETTERBOX))
+		sdl_fail();
+
         w->shown = true;
 }
 
@@ -49,17 +52,17 @@ static void render_window(struct window *w)
         int pitch;
         int *pixels;
 
-        if (SDL_LockTexture(w->texture, NULL, (void **)&pixels, &pitch) < 0)
+        if (!SDL_LockTexture(w->texture, NULL, (void **)&pixels, &pitch))
                 sdl_fail();
 
         memcpy(pixels, w->buf, (size_t)(w->width * w->height) * sizeof *w->buf);
 
         SDL_UnlockTexture(w->texture);
 
-        if (SDL_RenderClear(w->renderer) < 0)
+        if (!SDL_RenderClear(w->renderer))
                 sdl_fail();
 
-        if (SDL_RenderCopy(w->renderer, w->texture, NULL, NULL) < 0)
+        if (!SDL_RenderTexture(w->renderer, w->texture, NULL, NULL))
                 sdl_fail();
 
         SDL_RenderPresent(w->renderer);
@@ -78,10 +81,11 @@ static void toggle_window_shown(struct window *w)
 
         if (!flags)
                 init_window(w);
-        else if (flags & SDL_WINDOW_SHOWN)
-                SDL_HideWindow(w->window);
-        else
-                SDL_ShowWindow(w->window);
+	/* TODO(sd3): SDL_WINDOW_SHOWN has been removed */
+        /* else if (flags & SDL_WINDOW_SHOWN) */
+        /*         SDL_HideWindow(w->window); */
+        /* else */
+        /*         SDL_ShowWindow(w->window); */
 }
 
 static void rescale_window(struct window *w, int scale)
